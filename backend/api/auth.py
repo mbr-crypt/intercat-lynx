@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..dependencies.auth import get_current_user, require_admin
+from ..dependencies.auth import get_current_user
 from ..models import EmailVerification, User, UserRole
 from ..schemas.auth import (
     LoginResponse,
@@ -19,7 +19,6 @@ from ..schemas.auth import (
     UserCreate,
     UserLogin,
     UserResponse,
-    UserRoleUpdate,
     UserUpdate,
 )
 from ..schemas.email_verification import (
@@ -30,7 +29,7 @@ from ..schemas.email_verification import (
     VerificationResponse,
 )
 from ..security import mfa, passwords
-from ..services import settings_service
+from ..services import settings_service, user_service
 from ..services.email_service import email_service
 from ..utils.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
@@ -146,6 +145,7 @@ def issue_access_token(user: User) -> dict:
             "username": user.username,
             "email": user.email,
             "role": user.role.value,
+            "tv": user.token_version,
         }
     )
     return {
@@ -161,7 +161,7 @@ def _complete_login(user: User, db: Session) -> dict:
     user.last_login_at = datetime.now(timezone.utc)
     db.commit()
     logger.info(f"User logged in: {user.username}")
-    return issue_access_token(user)
+    return {**issue_access_token(user), "must_change_password": user.must_change_password}
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -332,13 +332,25 @@ async def change_password(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Incorrect current password"
         )
 
-    # Update password
+    if password_data.old_password == password_data.new_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The new password must differ from the current one",
+        )
+
+    # Update password. All other sessions of this account end; this one continues
+    # with the fresh token returned below.
     current_user.hashed_password = get_password_hash(password_data.new_password)
+    current_user.must_change_password = False
+    current_user.token_version += 1
     db.commit()
 
     logger.info(f"Password changed successfully: {current_user.username}")
 
-    return {"message": "Password changed successfully"}
+    return {
+        "message": "Password changed successfully",
+        **issue_access_token(current_user),
+    }
 
 
 @router.delete("/me")
@@ -357,8 +369,18 @@ async def delete_account(
     """
     username = current_user.username
 
+    if current_user.role == UserRole.ADMIN and not (
+        db.query(User)
+        .filter(User.role == UserRole.ADMIN, User.is_active == True, User.id != current_user.id)
+        .count()
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You are the last administrator. Make someone else an administrator first.",
+        )
+
     # Delete user account
-    db.delete(current_user)
+    user_service.delete_user_and_data(db, current_user)
     db.commit()
 
     logger.info(f"User account deleted: {username}")
@@ -366,113 +388,7 @@ async def delete_account(
     return {"message": "Account deleted successfully"}
 
 
-# Admin endpoints
-@router.get(
-    "/users", response_model=list[UserResponse], dependencies=[Depends(require_admin)]
-)
-async def list_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    """
-    List all users (Admin only).
-
-    **Requires:** Admin role
-
-    **Returns:**
-    - List of user profiles
-    """
-    users = db.query(User).offset(skip).limit(limit).all()
-    return users
-
-
-@router.put(
-    "/users/{user_id}/role",
-    response_model=UserResponse,
-    dependencies=[Depends(require_admin)],
-)
-async def update_user_role(
-    user_id: int, role_update: UserRoleUpdate, db: Session = Depends(get_db)
-):
-    """
-    Update user role (Admin only).
-
-    **Requires:** Admin role
-
-    **Available roles:**
-    - VIEWER: Read-only access
-    - ANALYST: Can create and update
-    - ADMIN: Full access
-
-    **Returns:**
-    - Updated user profile
-    """
-    user = db.query(User).filter(User.id == user_id).first()
-
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
-        )
-
-    user.role = role_update.role
-    user.updated_at = datetime.now(timezone.utc)
-    db.commit()
-    db.refresh(user)
-
-    logger.info(f"User role updated: {user.username} -> {role_update.role.value}")
-
-    return user
-
-
-@router.put("/users/{user_id}/deactivate", dependencies=[Depends(require_admin)])
-async def deactivate_user(user_id: int, db: Session = Depends(get_db)):
-    """
-    Deactivate user account (Admin only).
-
-    **Requires:** Admin role
-
-    **Returns:**
-    - Success message
-    """
-    user = db.query(User).filter(User.id == user_id).first()
-
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
-        )
-
-    user.is_active = False
-    user.updated_at = datetime.now(timezone.utc)
-    db.commit()
-
-    logger.info(f"User deactivated: {user.username}")
-
-    return {"message": f"User {user.username} deactivated successfully"}
-
-
-@router.put("/users/{user_id}/activate", dependencies=[Depends(require_admin)])
-async def activate_user(user_id: int, db: Session = Depends(get_db)):
-    """
-    Activate user account (Admin only).
-
-    **Requires:** Admin role
-
-    **Returns:**
-    - Success message
-    """
-    user = db.query(User).filter(User.id == user_id).first()
-
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
-        )
-
-    user.is_active = True
-    user.failed_login_attempts = 0
-    user.locked_until = None
-    user.updated_at = datetime.now(timezone.utc)
-    db.commit()
-
-    logger.info(f"User activated: {user.username}")
-
-    return {"message": f"User {user.username} activated successfully"}
+# Admin endpoints for user management live in backend/api/users.py
 
 
 # ============================================================================

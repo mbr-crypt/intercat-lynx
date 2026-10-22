@@ -6,7 +6,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
@@ -20,7 +20,16 @@ logger = logging.getLogger(__name__)
 security = HTTPBearer()
 
 
+# While an admin-chosen password is still active, only these calls work
+_ALLOWED_WHILE_PASSWORD_CHANGE_PENDING = ("/auth/me", "/auth/change-password")
+
+
+def _as_utc(value: datetime) -> datetime:
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+
 async def get_current_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db),
 ) -> User:
@@ -63,12 +72,30 @@ async def get_current_user(
             status_code=status.HTTP_403_FORBIDDEN, detail="User account is inactive"
         )
 
+    # Tokens issued before a password change / "sign out everywhere" are dead.
+    # (Tokens from before this feature have no "tv" claim and count as version 0.)
+    if int(payload.get("tv", 0)) != user.token_version:
+        logger.info(f"Revoked session used: {user.username}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session is no longer valid. Please sign in again.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     # Check if account is locked
-    if user.locked_until and user.locked_until > datetime.now(timezone.utc):
+    if user.locked_until and _as_utc(user.locked_until) > datetime.now(timezone.utc):
         logger.warning(f"Locked user attempted access: {user.username}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Account is locked until {user.locked_until.isoformat()}",
+        )
+
+    if user.must_change_password and not request.url.path.endswith(
+        _ALLOWED_WHILE_PASSWORD_CHANGE_PENDING
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Password change required",
         )
 
     return user
@@ -178,6 +205,8 @@ def optional_user(
 
         user_id = payload.get("user_id")
         user = db.query(User).filter(User.id == user_id, User.is_active == True).first()
+        if user and int(payload.get("tv", 0)) != user.token_version:
+            return None
 
         return user
     except Exception as e:

@@ -58,6 +58,8 @@ class LoginResponse(BaseModel):
     mfa_required: bool = False
     # Short-lived token that only allows completing the 2FA step
     mfa_token: Optional[str] = None
+    # An admin set the password: the user has to choose their own now
+    must_change_password: bool = False
 
 
 class TwoFactorLogin(BaseModel):
@@ -108,11 +110,14 @@ class UserResponse(BaseModel):
     id: int
     email: str
     username: str
+    full_name: Optional[str] = None
+    role: UserRole = UserRole.VIEWER
     is_active: bool
     is_verified: bool
     created_at: datetime
     last_login_at: Optional[datetime]
     totp_enabled: bool = False
+    must_change_password: bool = False
 
     class Config:
         from_attributes = True
@@ -151,3 +156,84 @@ class UserRoleUpdate(BaseModel):
     """Schema for admin to update user role."""
 
     role: UserRole
+
+
+# --- Admin: user management --------------------------------------------------
+
+
+class AdminUserCreate(BaseModel):
+    """An admin creates an account. Without a password a temporary one is generated."""
+
+    username: str = Field(..., min_length=3, max_length=100, pattern="^[a-zA-Z0-9_-]+$")
+    email: EmailStr
+    full_name: Optional[str] = Field(None, max_length=255)
+    role: UserRole = UserRole.VIEWER
+    password: Optional[str] = Field(None, max_length=100)
+
+
+class AdminUserUpdate(BaseModel):
+    """Fields an admin may change. Only the given fields are changed."""
+
+    email: Optional[EmailStr] = None
+    full_name: Optional[str] = Field(None, max_length=255)
+    role: Optional[UserRole] = None
+    is_active: Optional[bool] = None
+
+
+class AdminPasswordReset(BaseModel):
+    """Optional own choice; without it a temporary password is generated."""
+
+    password: Optional[str] = Field(None, max_length=100)
+
+
+class AdminUserOut(BaseModel):
+    id: int
+    username: str
+    email: str
+    full_name: Optional[str] = None
+    role: UserRole
+    is_active: bool
+    is_verified: bool
+    is_locked: bool = False
+    totp_enabled: bool = False
+    must_change_password: bool = False
+    created_at: datetime
+    last_login_at: Optional[datetime] = None
+    failed_login_attempts: int = 0
+
+
+class AdminUserList(BaseModel):
+    total: int
+    page: int
+    page_size: int
+    items: list[AdminUserOut]
+
+
+class AdminUserWithPassword(BaseModel):
+    """Result of create / reset: the temporary password is shown exactly once."""
+
+    user: AdminUserOut
+    temporary_password: Optional[str] = None
+
+
+class AuditEventOut(BaseModel):
+    id: int
+    created_at: datetime
+    actor_username: Optional[str] = None
+    action: str
+    target_username: Optional[str] = None
+    detail: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class AuditEventList(BaseModel):
+    total: int
+    page: int
+    page_size: int
+    items: list[AuditEventOut]
+
+
+class RegistrationSetting(BaseModel):
+    registration_enabled: bool

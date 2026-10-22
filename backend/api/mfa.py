@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..dependencies.auth import get_current_user, require_admin
 from ..models import User
+from ..services import audit_service
 from ..schemas.auth import (
     RecoveryCodesResponse,
     TwoFactorConfirm,
@@ -116,12 +117,22 @@ async def regenerate_recovery_codes(
     return {"recovery_codes": mfa.regenerate_recovery_codes(user, db)}
 
 
-@router.put("/users/{user_id}/reset-2fa", dependencies=[Depends(require_admin)])
-async def admin_reset_two_factor(user_id: int, db: Session = Depends(get_db)):
-    """Admin: remove 2FA from an account whose owner lost phone and recovery codes."""
+@router.put("/users/{user_id}/reset-2fa")
+async def admin_reset_two_factor(
+    user_id: int,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """
+    Admin: remove 2FA from an account whose owner lost phone and recovery codes.
+    Existing sessions of that account end, so a hijacked session does not survive.
+    """
     target = db.query(User).filter(User.id == user_id).first()
     if not target:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     mfa.disable(target, db)
+    target.token_version += 1
+    audit_service.record(db, admin, audit_service.USER_2FA_RESET, target, commit=False)
+    db.commit()
     logger.warning(f"2FA reset by admin for: {target.username}")
     return {"message": "Two-factor authentication reset"}

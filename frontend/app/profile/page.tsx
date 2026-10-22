@@ -6,7 +6,7 @@ import { useAuth } from '@/lib/auth-context';
 import { TwoFactorSettings } from '@/components/TwoFactorSettings';
 
 export default function ProfilePage() {
-  const { user, token, logout, refreshUser, isLoading } = useAuth();
+  const { user, token, logout, refreshUser, startSession, isLoading } = useAuth();
   const router = useRouter();
 
   // Profile update
@@ -107,6 +107,12 @@ export default function ProfilePage() {
         throw new Error(data.detail || 'Failed to change password');
       }
 
+      // Other sessions of this account ended; continue with the fresh token
+      const data = await response.json().catch(() => ({}));
+      if (data.access_token) {
+        await startSession(data.access_token);
+      }
+
       setPasswordSuccess('Password changed successfully!');
       setOldPassword('');
       setNewPassword('');
@@ -155,6 +161,8 @@ export default function ProfilePage() {
     return null;
   }
 
+  const forced = !!user.must_change_password;
+
   return (
     <div className="max-w-4xl mx-auto">
       <div className="mb-8">
@@ -164,9 +172,20 @@ export default function ProfilePage() {
         </p>
       </div>
 
+      {forced && (
+        <div className="mb-6 rounded-2xl border border-blue-400/40 bg-blue-50 dark:bg-blue-900/30 p-4 text-sm text-blue-900 dark:text-blue-100">
+          <p className="font-semibold">Bitte wählen Sie ein eigenes Passwort.</p>
+          <p className="mt-1">
+            Ihr Passwort wurde von einem Administrator festgelegt. Solange Sie es nicht
+            ändern, ist nur diese Seite erreichbar. Geben Sie als &bdquo;Current Password&ldquo;
+            das Passwort ein, das Sie erhalten haben.
+          </p>
+        </div>
+      )}
+
       <div className="space-y-6">
         {/* Two-factor authentication */}
-        {token && (
+        {token && !forced && (
           <div className="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
               Zwei-Faktor-Anmeldung
@@ -180,6 +199,7 @@ export default function ProfilePage() {
         )}
 
         {/* Profile Information */}
+        {!forced && (
         <div className="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
           <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
             Profile Information
@@ -236,6 +256,8 @@ export default function ProfilePage() {
             </button>
           </form>
         </div>
+
+        )}
 
         {/* Change Password */}
         <div className="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
@@ -309,6 +331,7 @@ export default function ProfilePage() {
         </div>
 
         {/* Delete Account */}
+        {!forced && (
         <div className="bg-white dark:bg-gray-800 shadow rounded-lg p-6 border-2 border-red-200 dark:border-red-900">
           <h2 className="text-xl font-semibold text-red-600 dark:text-red-400 mb-4">
             Danger Zone
@@ -378,6 +401,7 @@ export default function ProfilePage() {
             </div>
           )}
         </div>
+        )}
       </div>
     </div>
   );

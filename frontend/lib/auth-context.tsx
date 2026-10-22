@@ -10,6 +10,8 @@ interface User {
   role: 'admin' | 'analyst' | 'viewer';
   is_active: boolean;
   totp_enabled?: boolean;
+  /** an admin set the password: the user has to choose their own first */
+  must_change_password?: boolean;
 }
 
 export interface LoginResult {
@@ -24,6 +26,8 @@ interface AuthContextType {
   login: (username: string, password: string) => Promise<LoginResult>;
   loginWithCode: (mfaToken: string, code: string) => Promise<void>;
   refreshUser: () => Promise<void>;
+  /** continue with a new access token (e.g. issued after a password change) */
+  startSession: (token: string) => Promise<void>;
   logout: () => void;
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -143,6 +147,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         login,
         loginWithCode,
         refreshUser,
+        startSession,
         logout,
         isAuthenticated: !!user,
         isLoading,
