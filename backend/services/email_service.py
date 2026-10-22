@@ -10,12 +10,54 @@ import os
 logger = logging.getLogger(__name__)
 
 
+def _cfg(key: str, env_name: str, default=None):
+    """Database setting (set by the setup assistant) > environment > default."""
+    from .settings_service import runtime
+
+    return runtime(key, env_name, default)
+
+
 class EmailService:
     """Email service for sending verification codes and emails."""
 
     def __init__(self):
         self.environment = os.getenv("ENVIRONMENT", "development")
-        self.smtp_enabled = os.getenv("SMTP_ENABLED", "false").lower() == "true"
+
+    @property
+    def smtp_enabled(self) -> bool:
+        return str(_cfg("smtp.enabled", "SMTP_ENABLED", "false")).lower() == "true"
+
+    def _smtp_send(self, msg, to_email: str) -> None:
+        """
+        Deliver a prepared message. Transport security is configurable:
+        ``starttls`` (port 587, default), ``ssl`` (port 465) or ``none``.
+        """
+        import smtplib
+        import ssl
+
+        host = _cfg("smtp.host", "SMTP_HOST", "localhost")
+        port = int(_cfg("smtp.port", "SMTP_PORT", "587"))
+        security = str(_cfg("smtp.security", "SMTP_SECURITY", "starttls")).lower()
+        username = _cfg("smtp.username", "SMTP_USERNAME")
+        password = _cfg("smtp.password", "SMTP_PASSWORD")
+        context = ssl.create_default_context()
+
+        if security == "ssl":
+            server = smtplib.SMTP_SSL(host, port, timeout=20, context=context)
+        else:
+            server = smtplib.SMTP(host, port, timeout=20)
+        with server:
+            if security == "starttls":
+                server.starttls(context=context)
+            if username and password:
+                server.login(username, password)
+            server.send_message(msg)
+
+    def _sender(self):
+        username = _cfg("smtp.username", "SMTP_USERNAME")
+        from_email = _cfg("smtp.from_email", "SMTP_FROM_EMAIL", username)
+        from_name = _cfg("smtp.from_name", "SMTP_FROM_NAME", "InterCat Lynx")
+        return from_name, from_email
 
     async def send_email(
         self, to_email: str, subject: str, html_content: str, text_content: str
@@ -120,92 +162,71 @@ OpenThreat Team
         return f"Your verification code is: {code}"
 
     async def _send_smtp_email(self, email: str, subject: str, message: str) -> bool:
-        """
-        Send email via SMTP.
-        """
+        """Send a plain text email via SMTP."""
         try:
-            import smtplib
-            from email.mime.multipart import MIMEMultipart
             from email.mime.text import MIMEText
 
-            smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
-            smtp_port = int(os.getenv("SMTP_PORT", "587"))
-            smtp_username = os.getenv("SMTP_USERNAME")
-            smtp_password = os.getenv("SMTP_PASSWORD")
-            from_email = os.getenv("SMTP_FROM_EMAIL", smtp_username)
-            from_name = os.getenv("SMTP_FROM_NAME", "OpenThreat")
-
-            if not smtp_username or not smtp_password:
-                logger.error("SMTP credentials not configured")
+            from_name, from_email = self._sender()
+            if not from_email:
+                logger.error("SMTP sender address not configured")
                 return False
-
-            # Create message
-            msg = MIMEMultipart()
+            msg = MIMEText(message, "plain", "utf-8")
             msg["From"] = f"{from_name} <{from_email}>"
             msg["To"] = email
             msg["Subject"] = subject
-
-            msg.attach(MIMEText(message, "plain"))
-
-            # Send email
-            with smtplib.SMTP(smtp_host, smtp_port) as server:
-                server.starttls()
-                server.login(smtp_username, smtp_password)
-                server.send_message(msg)
-
-            logger.info(f"Email sent successfully to {email}")
+            self._smtp_send(msg, email)
+            logger.info("Email sent successfully")
             return True
-
         except Exception as e:
-            logger.error(f"Failed to send email: {e}")
+            logger.error(f"Failed to send email: {type(e).__name__}: {e}")
             return False
 
     async def _send_smtp_email_html(
         self, email: str, subject: str, html_content: str, text_content: str
     ) -> bool:
-        """
-        Send HTML email via SMTP.
-        """
+        """Send an HTML email (with plain text alternative) via SMTP."""
         try:
-            import smtplib
             from email.mime.multipart import MIMEMultipart
             from email.mime.text import MIMEText
 
-            smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
-            smtp_port = int(os.getenv("SMTP_PORT", "587"))
-            smtp_username = os.getenv("SMTP_USERNAME")
-            smtp_password = os.getenv("SMTP_PASSWORD")
-            from_email = os.getenv("SMTP_FROM_EMAIL", smtp_username)
-            from_name = os.getenv("SMTP_FROM_NAME", "OpenThreat")
-
-            if not smtp_username or not smtp_password:
-                logger.error("SMTP credentials not configured")
+            from_name, from_email = self._sender()
+            if not from_email:
+                logger.error("SMTP sender address not configured")
                 return False
-
-            # Create message
             msg = MIMEMultipart("alternative")
             msg["From"] = f"{from_name} <{from_email}>"
             msg["To"] = email
             msg["Subject"] = subject
-
-            # Attach both plain text and HTML
-            part1 = MIMEText(text_content, "plain")
-            part2 = MIMEText(html_content, "html")
-            msg.attach(part1)
-            msg.attach(part2)
-
-            # Send email
-            with smtplib.SMTP(smtp_host, smtp_port) as server:
-                server.starttls()
-                server.login(smtp_username, smtp_password)
-                server.send_message(msg)
-
-            logger.info(f"HTML email sent successfully to {email}")
+            msg.attach(MIMEText(text_content, "plain", "utf-8"))
+            msg.attach(MIMEText(html_content, "html", "utf-8"))
+            self._smtp_send(msg, email)
+            logger.info("HTML email sent successfully")
             return True
-
         except Exception as e:
-            logger.error(f"Failed to send HTML email: {e}")
+            logger.error(f"Failed to send HTML email: {type(e).__name__}: {e}")
             return False
+
+    async def send_test_email(self, to_email: str) -> tuple:
+        """Always really send (used by the setup assistant). Returns (ok, error)."""
+        try:
+            from email.mime.text import MIMEText
+
+            from_name, from_email = self._sender()
+            if not from_email:
+                return False, "Absenderadresse fehlt"
+            msg = MIMEText(
+                "Dies ist eine Testnachricht von InterCat Lynx. "
+                "Der E-Mail-Versand funktioniert.",
+                "plain",
+                "utf-8",
+            )
+            msg["From"] = f"{from_name} <{from_email}>"
+            msg["To"] = to_email
+            msg["Subject"] = "InterCat Lynx: Test des E-Mail-Versands"
+            self._smtp_send(msg, to_email)
+            return True, None
+        except Exception as e:
+            return False, f"{type(e).__name__}: {e}"
 
 
 # Singleton instance

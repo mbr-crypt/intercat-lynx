@@ -43,8 +43,14 @@ class NVDCompleteService:
         Args:
             api_key: Optional NVD API key for higher rate limits (50 req/min)
         """
-        self.api_key = api_key or os.getenv("NVD_API_KEY")
+        if api_key is None:
+            from .settings_service import runtime
+
+            api_key = runtime("nvd.api_key", "NVD_API_KEY")
+        self.api_key = api_key
         self.session = requests.Session()
+        # Optional hook for progress display: callback(processed, total)
+        self.progress_callback = None
 
         if self.api_key:
             self.session.headers.update({"apiKey": self.api_key})
@@ -160,6 +166,7 @@ class NVDCompleteService:
             params["lastModEndDate"] = mod_end_date
 
         total_processed = 0
+        consecutive_errors = 0
 
         while True:
             try:
@@ -170,6 +177,7 @@ class NVDCompleteService:
                 logger.info(f"Fetching CVEs: startIndex={params['startIndex']}")
                 response = self.session.get(self.BASE_URL, params=params, timeout=30)
                 response.raise_for_status()
+                consecutive_errors = 0
 
                 data = response.json()
 
@@ -196,6 +204,11 @@ class NVDCompleteService:
                     # Refresh stats cache after each batch
                     refresh_stats_cache(db)
 
+                    if self.progress_callback:
+                        self.progress_callback(
+                            params["startIndex"] + len(vulnerabilities), total_results
+                        )
+
                     # Save checkpoint
                     if checkpoint_file:
                         self._save_checkpoint(
@@ -218,7 +231,12 @@ class NVDCompleteService:
                 params["startIndex"] += self.RESULTS_PER_PAGE
 
             except requests.exceptions.RequestException as e:
+                consecutive_errors += 1
                 logger.error(f"Request error: {e}")
+                if consecutive_errors >= 5:
+                    # Do not retry forever (e.g. no internet access, blocked
+                    # firewall): surface the problem to the caller instead.
+                    raise
                 logger.info("Retrying in 30 seconds...")
                 time.sleep(30)
                 continue

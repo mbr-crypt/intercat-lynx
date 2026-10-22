@@ -53,6 +53,12 @@ def isolate_stats_cache(monkeypatch):
     monkeypatch.setattr(stats_module, "redis_client", _NoCache())
 
 
+@pytest.fixture()
+def session_factory():
+    """Session factory bound to the in-memory test database."""
+    return TestingSessionLocal
+
+
 @pytest.fixture(scope="function")
 def db_session():
     """

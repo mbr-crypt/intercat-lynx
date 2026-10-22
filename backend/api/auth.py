@@ -30,6 +30,7 @@ from ..schemas.email_verification import (
     VerificationResponse,
 )
 from ..security import mfa, passwords
+from ..services import settings_service
 from ..services.email_service import email_service
 from ..utils.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
@@ -60,6 +61,12 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
     **Returns:**
     - User profile information
     """
+    if not settings_service.registration_allowed(db):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Registration is currently closed. Ask an administrator for an account.",
+        )
+
     # Check if email already exists
     existing_user = db.query(User).filter(User.email == user_data.email).first()
     if existing_user:

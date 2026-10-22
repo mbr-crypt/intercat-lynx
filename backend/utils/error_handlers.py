@@ -118,8 +118,21 @@ async def validation_exception_handler(
     Returns:
         JSON error response
     """
+    # exc.errors() also contains the submitted value ("input") - for a login or
+    # setup form that is the password - and non-serializable objects (the
+    # exception of a custom validator). Keep only what is safe to log and show.
+    safe_errors = [
+        {
+            "loc": [str(part) for part in err.get("loc", ())],
+            "msg": str(err.get("msg", "")).removeprefix("Value error, "),
+            "type": err.get("type", ""),
+        }
+        for err in exc.errors()
+    ]
     logger.warning(
-        f"Validation error: {exc.errors()}", extra={"path": request.url.path}
+        "Validation error on %s: %s",
+        request.url.path,
+        [(e["loc"], e["type"]) for e in safe_errors],
     )
 
     return JSONResponse(
@@ -127,7 +140,7 @@ async def validation_exception_handler(
         content={
             "error": "Validation error",
             "status_code": status.HTTP_422_UNPROCESSABLE_ENTITY,
-            "details": exc.errors(),
+            "details": safe_errors,
             "path": str(request.url.path),
         },
     )

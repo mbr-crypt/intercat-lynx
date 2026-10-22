@@ -100,6 +100,7 @@ from .api import (
     news,
     notifications,
     search,
+    setup,
     stats,
     tasks,
     techstack,
@@ -111,6 +112,7 @@ from .api.v1 import data_sources, llm
 app.include_router(health.router, tags=["Health"])
 app.include_router(waitlist.router, prefix="/api/v1/waitlist", tags=["Waitlist"])
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
+app.include_router(setup.router, prefix="/api/v1/setup", tags=["Setup"])
 app.include_router(mfa.router, prefix="/api/v1/auth", tags=["Authentication"])
 app.include_router(csrf.router, prefix="/api/v1", tags=["Security"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
@@ -156,6 +158,15 @@ async def startup_event():
     """Startup event handler."""
     logger.info("🚀 OpenThreat API starting...")
 
+    # Bring the schema up to date (fresh installs need no manual command)
+    try:
+        from .migrations.run_migrations import run_alembic_upgrade
+
+        logger.info("🔄 Upgrading database schema (alembic)...")
+        run_alembic_upgrade()
+    except Exception as e:
+        logger.error(f"❌ Schema upgrade failed: {e}")
+
     # Run database migrations
     try:
         from .migrations.run_migrations import run_migrations
@@ -167,7 +178,21 @@ async def startup_event():
         logger.warning(f"⚠️  Migration warning: {e}")
         # Don't fail startup if migrations have issues
 
-    logger.info(f"📊 Database: {os.getenv('DATABASE_URL', 'Not configured')}")
+    # never log the password part of the connection string
+    from sqlalchemy.engine import make_url
+
+    try:
+        db_display = make_url(os.getenv("DATABASE_URL", "")).render_as_string(
+            hide_password=True
+        )
+    except Exception:
+        db_display = "Not configured"
+    logger.info(f"📊 Database: {db_display}")
+
+    # Setup assistant: print the setup token while the installation is open
+    from .api.setup import announce_setup_token
+
+    announce_setup_token()
     logger.info(f"🌐 CORS Origins: {allowed_origins}")
     logger.info(f"📝 Log Level: {os.getenv('LOG_LEVEL', 'INFO')}")
     logger.info(f"🛡️  CSRF Protection: Enabled")
