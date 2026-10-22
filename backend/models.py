@@ -833,9 +833,12 @@ class TechStack(Base):
     session_id = Column(String(64), nullable=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
 
-    # Packages stored as JSONB array
+    # Packages stored as JSON array (JSONB on PostgreSQL, plain JSON elsewhere,
+    # e.g. SQLite in the test suite - JSONB is PostgreSQL-only)
     # Format: [{"name": "react", "version": "18.2.0", "ecosystem": "npm"}, ...]
-    packages = Column(JSONB, nullable=False, default=list)
+    packages = Column(
+        JSON().with_variant(JSONB(), "postgresql"), nullable=False, default=list
+    )
 
     # Source file type that was parsed
     source_type = Column(
