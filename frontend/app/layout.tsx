@@ -6,6 +6,7 @@ import { AuthProvider } from "@/lib/auth-context";
 import { ThemeProvider } from "@/lib/theme-context";
 import { AnalyticsProvider } from "@/components/AnalyticsProvider";
 import { SetupGuard } from "@/components/SetupGuard";
+import { PasswordChangeGuard } from "@/components/PasswordChangeGuard";
 import {
   PRODUCT_NAME,
   SOURCE_URL,
@@ -44,6 +45,7 @@ export default function RootLayout({
           <AuthProvider>
             <AnalyticsProvider>
             <SetupGuard />
+            <PasswordChangeGuard />
             <div className="min-h-screen bg-gray-50 dark:bg-gray-900 overflow-x-hidden transition-colors">
               <Navigation />
               {/* Padding top for fixed nav */}
