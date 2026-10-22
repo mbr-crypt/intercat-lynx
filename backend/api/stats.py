@@ -3,7 +3,9 @@ Statistics and dashboard endpoints.
 """
 
 import json
+import logging
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 import redis
 from fastapi import APIRouter, Depends
@@ -13,6 +15,8 @@ from sqlalchemy.orm import Session
 from ..database import REDIS_URL, get_db
 from ..models import IngestionRun, Vulnerability
 from ..schemas import StatsResponse
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -34,88 +38,123 @@ async def get_statistics(db: Session = Depends(get_db)):
     - Recent updates count
     - Last update timestamp
     """
-    # Try to get from cache first
+    # 1) Redis cache (best effort - a missing Redis must never break the endpoint)
     try:
         cached = redis_client.get(STATS_CACHE_KEY)
         if cached:
-            data = json.loads(cached)
-            return StatsResponse(**data)
+            return StatsResponse(**json.loads(cached))
     except Exception as e:
-        print(f"Cache read error: {e}")
+        logger.warning("Stats cache read failed: %s", e)
 
-    # Cache miss - read from pre-calculated stats cache table (instant!)
+    # 2) Pre-calculated table (fast on large databases), 3) live counts
+    counts = _read_stats_cache_table(db)
+    if counts is None:
+        counts = _count_live(db)
+
+    last_run = (
+        db.query(IngestionRun)
+        .filter(IngestionRun.status == "success")
+        .order_by(desc(IngestionRun.completed_at))
+        .first()
+    )
+
+    result = StatsResponse(
+        total_vulnerabilities=counts["total"],
+        exploited_vulnerabilities=counts["exploited"],
+        critical_vulnerabilities=counts["CRITICAL"],
+        high_vulnerabilities=counts["HIGH"],
+        by_severity={
+            level: counts[level]
+            for level in ("CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN")
+        },
+        recent_updates=counts["recent"],
+        last_update=last_run.completed_at if last_run else None,
+    )
+
     try:
-        # Read from stats cache table instead of scanning 314k rows
-        cache_row = db.execute(
-            text("SELECT * FROM vulnerability_stats_cache WHERE id = 1")
-        ).fetchone()
-
-        if cache_row:
-            total = cache_row[1]  # total_vulnerabilities
-            exploited = cache_row[2]  # exploited_vulnerabilities
-            critical = cache_row[3]  # critical_vulnerabilities
-            high = cache_row[4]  # high_vulnerabilities
-            medium = cache_row[5]  # medium_vulnerabilities
-            low = cache_row[6]  # low_vulnerabilities
-            unknown = cache_row[7]  # unknown_vulnerabilities
-            recent = cache_row[8]  # recent_updates
-
-            by_severity = {
-                "CRITICAL": critical,
-                "HIGH": high,
-                "MEDIUM": medium,
-                "LOW": low,
-                "UNKNOWN": unknown,
-            }
-        else:
-            # Fallback if cache table is empty
-            total = exploited = critical = high = recent = 0
-            by_severity = {}
-
-        # Last update timestamp
-        last_run = (
-            db.query(IngestionRun)
-            .filter(IngestionRun.status == "success")
-            .order_by(desc(IngestionRun.completed_at))
-            .first()
+        redis_client.setex(
+            STATS_CACHE_KEY,
+            STATS_CACHE_TTL,
+            json.dumps(result.model_dump(), default=str),
         )
-
-        last_update = last_run.completed_at if last_run else None
-
-        result = StatsResponse(
-            total_vulnerabilities=total,
-            exploited_vulnerabilities=exploited,
-            critical_vulnerabilities=critical,
-            high_vulnerabilities=high,
-            by_severity=by_severity,
-            recent_updates=recent,
-            last_update=last_update,
-        )
-
-        # Cache the result
-        try:
-            redis_client.setex(
-                STATS_CACHE_KEY,
-                STATS_CACHE_TTL,
-                json.dumps(result.model_dump(), default=str),
-            )
-        except Exception as e:
-            print(f"Cache write error: {e}")
-
-        return result
-
     except Exception as e:
-        print(f"Stats calculation error: {e}")
-        # Return empty stats on error
-        return StatsResponse(
-            total_vulnerabilities=0,
-            exploited_vulnerabilities=0,
-            critical_vulnerabilities=0,
-            high_vulnerabilities=0,
-            by_severity={},
-            recent_updates=0,
-            last_update=None,
+        logger.warning("Stats cache write failed: %s", e)
+
+    return result
+
+
+def _read_stats_cache_table(db: Session) -> Optional[dict]:
+    """
+    Read the pre-calculated counters from ``vulnerability_stats_cache``.
+
+    Returns None when the table does not exist (e.g. SQLite, fresh install
+    before the SQL migration ran) or holds no usable data, so the caller can
+    fall back to live counting instead of reporting zeros.
+    """
+    try:
+        row = (
+            db.execute(
+                text(
+                    "SELECT total_vulnerabilities, exploited_vulnerabilities, "
+                    "critical_vulnerabilities, high_vulnerabilities, "
+                    "medium_vulnerabilities, low_vulnerabilities, "
+                    "unknown_vulnerabilities, recent_updates "
+                    "FROM vulnerability_stats_cache WHERE id = 1"
+                )
+            )
+            .mappings()
+            .fetchone()
         )
+    except Exception as e:
+        # On PostgreSQL a failed statement aborts the transaction -> reset it.
+        db.rollback()
+        logger.info("Stats cache table not available, counting live: %s", e)
+        return None
+
+    if row is None or not row["total_vulnerabilities"]:
+        return None
+
+    return {
+        "total": row["total_vulnerabilities"],
+        "exploited": row["exploited_vulnerabilities"],
+        "CRITICAL": row["critical_vulnerabilities"],
+        "HIGH": row["high_vulnerabilities"],
+        "MEDIUM": row["medium_vulnerabilities"],
+        "LOW": row["low_vulnerabilities"],
+        "UNKNOWN": row["unknown_vulnerabilities"],
+        "recent": row["recent_updates"],
+    }
+
+
+def _count_live(db: Session) -> dict:
+    """Count directly from the vulnerabilities table (always correct, slower)."""
+    week_ago = datetime.now(timezone.utc) - timedelta(days=7)
+    total, exploited, recent = db.query(
+        func.count(Vulnerability.id),
+        func.coalesce(
+            func.sum(case((Vulnerability.exploited_in_the_wild.is_(True), 1), else_=0)),
+            0,
+        ),
+        func.coalesce(
+            func.sum(case((Vulnerability.published_at >= week_ago, 1), else_=0)), 0
+        ),
+    ).one()
+
+    by_severity = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "UNKNOWN": 0}
+    for severity, count in (
+        db.query(Vulnerability.severity, func.count(Vulnerability.id))
+        .group_by(Vulnerability.severity)
+        .all()
+    ):
+        key = (severity or "UNKNOWN").upper()
+        by_severity[key if key in by_severity else "UNKNOWN"] += count
+
+    return {
+        "total": total,
+        "exploited": int(exploited),
+        "recent": int(recent),
+        **by_severity,
+    }
 
 
 @router.get("/stats/top-vendors")

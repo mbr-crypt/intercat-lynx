@@ -32,6 +32,24 @@ engine = create_engine(
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
+@pytest.fixture(autouse=True)
+def isolate_stats_cache(monkeypatch):
+    """
+    Replace the Redis client used by /stats with an in-memory stub so cached
+    values can never leak between tests (or depend on a running Redis).
+    """
+    from backend.api import stats as stats_module
+
+    class _NoCache:
+        def get(self, key):
+            return None
+
+        def setex(self, key, ttl, value):
+            return None
+
+    monkeypatch.setattr(stats_module, "redis_client", _NoCache())
+
+
 @pytest.fixture(scope="function")
 def db_session():
     """
@@ -74,7 +92,7 @@ def sample_vulnerability(db_session):
     from datetime import datetime, timezone
     
     vuln = Vulnerability(
-        cve_id="CVE-2024-TEST",
+        cve_id="CVE-2024-90001",
         title="Test Vulnerability",
         description="This is a test vulnerability",
         severity="HIGH",
@@ -109,7 +127,7 @@ def sample_exploited_vulnerability(db_session):
     from datetime import datetime, timezone
     
     vuln = Vulnerability(
-        cve_id="CVE-2024-EXPLOITED",
+        cve_id="CVE-2024-90002",
         title="Exploited Vulnerability",
         description="This vulnerability is exploited in the wild",
         severity="CRITICAL",
