@@ -3,9 +3,10 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
+import { TwoFactorSettings } from '@/components/TwoFactorSettings';
 
 export default function ProfilePage() {
-  const { user, token, logout } = useAuth();
+  const { user, token, logout, refreshUser, isLoading } = useAuth();
   const router = useRouter();
 
   // Profile update
@@ -29,12 +30,15 @@ export default function ProfilePage() {
   const [deleteError, setDeleteError] = useState('');
 
   useEffect(() => {
+    // Wait until the stored session was checked; otherwise a page reload
+    // would bounce logged-in users to the sign-in page.
+    if (isLoading) return;
     if (!user) {
       router.push('/auth');
       return;
     }
     setEmail(user.email);
-  }, [user, router]);
+  }, [user, router, isLoading]);
 
   const handleProfileUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -161,6 +165,20 @@ export default function ProfilePage() {
       </div>
 
       <div className="space-y-6">
+        {/* Two-factor authentication */}
+        {token && (
+          <div className="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
+              Zwei-Faktor-Anmeldung
+            </h2>
+            <TwoFactorSettings
+              token={token}
+              enabled={!!user.totp_enabled}
+              onChanged={refreshUser}
+            />
+          </div>
+        )}
+
         {/* Profile Information */}
         <div className="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
           <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">

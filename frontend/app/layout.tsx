@@ -5,6 +5,7 @@ import { Navigation } from "@/components/navigation";
 import { AuthProvider } from "@/lib/auth-context";
 import { ThemeProvider } from "@/lib/theme-context";
 import { AnalyticsProvider } from "@/components/AnalyticsProvider";
+import { SetupGuard } from "@/components/SetupGuard";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -33,6 +34,7 @@ export default function RootLayout({
         <ThemeProvider>
           <AuthProvider>
             <AnalyticsProvider>
+            <SetupGuard />
             <div className="min-h-screen bg-gray-50 dark:bg-gray-900 overflow-x-hidden transition-colors">
               <Navigation />
               {/* Padding top for fixed nav */}
