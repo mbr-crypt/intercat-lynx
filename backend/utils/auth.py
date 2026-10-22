@@ -74,22 +74,21 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     return encoded_jwt
 
 
-def decode_access_token(token: str) -> dict:
+def decode_access_token(token: str, purpose: Optional[str] = None) -> dict:
     """
-    Decode and validate a JWT access token.
+    Decode and validate a JWT.
 
-    Args:
-        token: JWT token string
-
-    Returns:
-        Decoded token data
+    ``purpose`` names the kind of token the caller accepts. Normal login
+    tokens carry no purpose; the short-lived token of the 2FA step carries
+    ``"mfa"``. A token of the wrong kind is rejected here, centrally, so an
+    ``mfa`` token (issued after the password step only) can never be used as
+    a login token on any endpoint.
 
     Raises:
-        HTTPException: If token is invalid or expired
+        HTTPException: If token is invalid, expired or of the wrong kind
     """
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return payload
     except JWTError as e:
         logger.warning(f"JWT decode error: {e}")
         raise HTTPException(
@@ -97,6 +96,13 @@ def decode_access_token(token: str) -> dict:
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    if payload.get("purpose") != purpose:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return payload
 
 
 def validate_token_data(payload: dict) -> dict:

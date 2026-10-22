@@ -234,10 +234,10 @@ async def login_second_factor(data: TwoFactorLogin, db: Session = Depends(get_db
         detail="Invalid or expired verification",
     )
     try:
-        payload = decode_access_token(data.mfa_token)
+        payload = decode_access_token(data.mfa_token, purpose="mfa")
     except HTTPException:
         raise invalid
-    if payload.get("purpose") != "mfa" or "user_id" not in payload:
+    if "user_id" not in payload:
         raise invalid
 
     user = db.query(User).filter(User.id == payload["user_id"]).first()

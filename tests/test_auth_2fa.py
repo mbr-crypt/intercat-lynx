@@ -159,3 +159,24 @@ def test_admin_can_reset_2fa_of_other_user(client, db_session):
     # a normal user may not do this
     r = client.put(f"/api/v1/auth/users/{victim.id}/reset-2fa", headers=auth(bob_token))
     assert r.status_code in (401, 403)
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["/api/v1/notifications", "/api/v1/bookmarks", "/api/v1/auth/me"],
+)
+def test_mfa_token_is_not_accepted_as_login_token_anywhere(client, db_session, path):
+    """
+    The token of the 2FA step is issued after the *password* only. If any
+    endpoint accepted it as a login token, the second factor would be bypassed.
+    Several endpoints use a second, older auth dependency, so test them too.
+    """
+    make_user(db_session)
+    token = login(client).json()["access_token"]
+    enable_2fa(client, db_session, token)
+    mfa_token = login(client).json()["mfa_token"]
+
+    assert client.get(path, headers=auth(mfa_token)).status_code == 401
+    # and the real login token is, of course, not a valid mfa token
+    r = client.post("/api/v1/auth/login/2fa", json={"mfa_token": token, "code": "123456"})
+    assert r.status_code == 401
