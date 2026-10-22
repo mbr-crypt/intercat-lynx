@@ -147,9 +147,6 @@ Or use curl:
 ```bash
 # Fetch recent CVEs (fast)
 curl -X POST "http://localhost:8001/api/v1/data-sources/nvd/fetch-recent?days=30"
-
-# Fetch BSI CERT (German descriptions)
-curl -X POST "http://localhost:8001/api/v1/data-sources/bsi-cert/fetch"
 ```
 
 **Note:** CISA KEV data should already be populated during initial setup. If not, run:

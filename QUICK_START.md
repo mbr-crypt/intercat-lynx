@@ -175,9 +175,6 @@ python scripts/fetch_nvd_complete.py --recent --days 30
 
 # CISA KEV (exploited vulnerabilities)
 python scripts/fetch_cisa_kev.py
-
-# BSI CERT (German descriptions)
-python scripts/fetch_bsi_cert.py
 ```
 
 ## 🎯 Next Steps
