@@ -41,13 +41,17 @@ class RedisRateLimiter:
         self.requests_per_minute = requests_per_minute
         self.requests_per_hour = requests_per_hour
 
-        # Test Redis connection
+        # Test Redis connection. A missing Redis must not stop the app from
+        # importing/starting: check_rate_limit() already fails open on Redis
+        # errors, so we only warn here (this also lets the test suite and local
+        # development run without a Redis server).
         try:
             self.redis_client.ping()
             logger.info("Redis rate limiter connected successfully")
         except redis.ConnectionError as e:
-            logger.error(f"Failed to connect to Redis: {e}")
-            raise
+            logger.warning(
+                f"Redis not reachable, rate limiting will fail open until it is: {e}"
+            )
 
     def check_rate_limit(self, ip: str) -> Tuple[bool, str, dict]:
         """

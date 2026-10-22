@@ -7,11 +7,13 @@ pytest-cov==4.1.0
 pytest-mock==3.12.0
 
 # HTTP testing
-httpx==0.25.2
+# httpx is intentionally not pinned here: requirements.txt (ollama) already
+# requires httpx>=0.27, and a second pin makes pip's resolver fail.
 requests-mock==1.11.0
 
-# Database testing
-pytest-postgresql==5.0.0
+# Test data
+# pytest-postgresql was removed: it was unused (tests run on in-memory SQLite)
+# and 5.0.0 crashes pytest on Python 3.13 (needs pkg_resources).
 faker==20.1.0
 
 # Code quality
