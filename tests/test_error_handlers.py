@@ -71,7 +71,7 @@ class TestErrorResponses:
     
     def test_not_found_response(self, client):
         """Test 404 error response format."""
-        response = client.get("/api/v1/vulnerabilities/CVE-FAKE-9999")
+        response = client.get("/api/v1/vulnerabilities/CVE-9999-00002")
         
         assert response.status_code == status.HTTP_404_NOT_FOUND
         data = response.json()

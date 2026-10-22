@@ -27,7 +27,7 @@ class TestVulnerabilityEndpoints:
         data = response.json()
         assert data["total"] == 1
         assert len(data["items"]) == 1
-        assert data["items"][0]["cve_id"] == "CVE-2024-TEST"
+        assert data["items"][0]["cve_id"] == "CVE-2024-90001"
     
     def test_list_vulnerabilities_pagination(self, client, multiple_vulnerabilities):
         """Test vulnerability pagination."""
@@ -71,20 +71,27 @@ class TestVulnerabilityEndpoints:
     
     def test_get_vulnerability_by_id(self, client, sample_vulnerability):
         """Test getting a specific vulnerability."""
-        response = client.get("/api/v1/vulnerabilities/CVE-2024-TEST")
+        response = client.get("/api/v1/vulnerabilities/CVE-2024-90001")
         
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
-        assert data["cve_id"] == "CVE-2024-TEST"
+        assert data["cve_id"] == "CVE-2024-90001"
         assert data["title"] == "Test Vulnerability"
         assert data["severity"] == "HIGH"
         assert data["cvss_score"] == 7.5
     
     def test_get_nonexistent_vulnerability(self, client):
         """Test getting a vulnerability that doesn't exist."""
-        response = client.get("/api/v1/vulnerabilities/CVE-9999-FAKE")
+        # Well-formed ID that is not in the database -> 404
+        response = client.get("/api/v1/vulnerabilities/CVE-9999-00001")
         
         assert response.status_code == status.HTTP_404_NOT_FOUND
+
+    def test_malformed_cve_id_is_rejected(self, client):
+        """A malformed ID is rejected by validation (400), not looked up (404)."""
+        response = client.get("/api/v1/vulnerabilities/CVE-9999-FAKE")
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
     
     def test_list_exploited_vulnerabilities(self, client, sample_exploited_vulnerability):
         """Test listing exploited vulnerabilities."""
@@ -94,7 +101,7 @@ class TestVulnerabilityEndpoints:
         data = response.json()
         assert data["total"] == 1
         assert data["items"][0]["exploited_in_the_wild"] is True
-        assert data["items"][0]["cve_id"] == "CVE-2024-EXPLOITED"
+        assert data["items"][0]["cve_id"] == "CVE-2024-90002"
     
     def test_sorting(self, client, multiple_vulnerabilities):
         """Test sorting vulnerabilities."""
@@ -153,12 +160,12 @@ class TestSearchEndpoints:
     
     def test_search_by_cve_id(self, client, sample_vulnerability):
         """Test searching by CVE ID."""
-        response = client.get("/api/v1/search?q=CVE-2024-TEST")
+        response = client.get("/api/v1/search?q=CVE-2024-90001")
         
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         assert data["total"] >= 1
-        assert any(item["cve_id"] == "CVE-2024-TEST" for item in data["items"])
+        assert any(item["cve_id"] == "CVE-2024-90001" for item in data["items"])
     
     def test_search_by_title(self, client, sample_vulnerability):
         """Test searching by title."""
