@@ -1,22 +1,39 @@
 <div align="center">
 
-# 🛡️ OpenThreat
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo/lynx-logo-weiss.svg">
+  <img src="docs/assets/logo/lynx-logo-schwarz.svg" alt="InterCat Lynx" width="360">
+</picture>
 
-**Democratizing Threat Intelligence**
+**Vulnerability intelligence**
 
-A free and open-source platform for tracking CVEs and security threats
+Track CVEs and security threats, and get told about the ones that concern your systems.
 
-[![CI/CD Pipeline](https://github.com/hoodinformatik/OpenThreat/actions/workflows/ci.yml/badge.svg)](https://github.com/hoodinformatik/OpenThreat/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Next.js](https://img.shields.io/badge/next.js-14-black.svg)](https://nextjs.org/)
 [![PostgreSQL](https://img.shields.io/badge/postgresql-16-blue.svg)](https://www.postgresql.org/)
 
-[Features](#-features) • [Quick Start](#-quick-start) • [Documentation](#-documentation) • [Contributing](#-contributing)
+[About this fork](#-about-this-fork) • [Features](#-features) • [Quick Start](#-quick-start) • [Documentation](#-documentation) • [Contributing](#-contributing)
 
 </div>
 
 ---
+
+## 🧬 About this fork
+
+**InterCat Lynx** is a fork of [OpenThreat](https://github.com/hoodinformatik/OpenThreat) by
+[hoodinformatik](https://github.com/hoodinformatik). The original project is no longer maintained
+(last change on 2026-08-23). Lynx keeps its history and licence, fixes bugs and extends it.
+
+What is different from the original (details in [CHANGELOG.md](CHANGELOG.md) and [NOTICE](NOTICE)):
+
+- Setup assistant in the browser: system check, administrator, e-mail, NVD key and data import, protected by a one-time setup token
+- Passwords hashed with Argon2id (old bcrypt hashes are upgraded on login), two-factor login with TOTP and recovery codes
+- Working test suite, fixed database migrations, updated dependencies
+- Planned: user management, product selection with notifications (e-mail, webhook, Zabbix), CVE trend graphs, SSO
+
+Technical names (database `openthreat`, container names, environment variables) are unchanged for now so that existing installations keep working.
 
 ## 🎯 Mission
 
@@ -69,8 +86,8 @@ OpenThreat makes threat intelligence accessible to everyone - from security prof
 
 1. **Clone the repository**
 ```bash
-git clone https://github.com/hoodinformatik/OpenThreat.git
-cd OpenThreat
+git clone https://github.com/mbr-crypt/intercat-lynx.git
+cd intercat-lynx
 ```
 
 2. **Start infrastructure**
@@ -290,22 +307,29 @@ See [nginx/README.md](nginx/README.md) for details.
 We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 **Quick Links:**
-- [Report a Bug](https://github.com/hoodinformatik/OpenThreat/issues/new?labels=bug)
-- [Request a Feature](https://github.com/hoodinformatik/OpenThreat/issues/new?labels=enhancement)
+- [Report a Bug](https://github.com/mbr-crypt/intercat-lynx/issues/new?labels=bug)
+- [Request a Feature](https://github.com/mbr-crypt/intercat-lynx/issues/new?labels=enhancement)
 - [View Changelog](CHANGELOG.md)
 
 ## 📧 Contact
 
-- **Email**: hoodinformatik@gmail.com
-- **GitHub**: [@hoodinformatik](https://github.com/hoodinformatik)
+- **This fork:** [mbr-crypt/intercat-lynx](https://github.com/mbr-crypt/intercat-lynx) (issues and pull requests)
+- **Original project:** [hoodinformatik/OpenThreat](https://github.com/hoodinformatik/OpenThreat)
 
 ## 📜 License
 
-Apache License 2.0 - see [LICENSE](LICENSE) for details.
+GNU Affero General Public License v3.0 (AGPL-3.0), see [LICENSE](LICENSE).
+
+The original OpenThreat README stated "Apache 2.0", but the `LICENSE` file in the repository is the AGPL-3.0,
+so this fork follows the `LICENSE` file. Origin, changes and the use of the
+InterCat name and logo are described in [NOTICE](NOTICE).
+
+If you run a modified version as a network service, the AGPL requires you to offer your users the source
+code of that version. The web interface links to the source code in its footer.
 
 ## 🌟 Star History
 
-If you find OpenThreat useful, please consider giving it a star! ⭐
+If you find this useful, please consider giving the repository (and the original OpenThreat) a star! ⭐
 
 ---
 
@@ -313,6 +337,6 @@ If you find OpenThreat useful, please consider giving it a star! ⭐
 
 **Made with ❤️ for the security community**
 
-[Report Bug](https://github.com/hoodinformatik/OpenThreat/issues) • [Request Feature](https://github.com/hoodinformatik/OpenThreat/issues) • [Documentation](docs/)
+[Report Bug](https://github.com/mbr-crypt/intercat-lynx/issues) • [Request Feature](https://github.com/mbr-crypt/intercat-lynx/issues) • [Documentation](docs/)
 
 </div>

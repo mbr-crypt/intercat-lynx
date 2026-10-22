@@ -40,7 +40,7 @@ class CISAKEVService:
         results_per_page = 2000  # Maximum allowed by NVD API
 
         headers = {
-            "User-Agent": "OpenThreat/1.0 (Vulnerability Management System)",
+            "User-Agent": "InterCat-Lynx/0.1 (fork of OpenThreat; vulnerability management)",
             "Accept": "application/json",
         }
 

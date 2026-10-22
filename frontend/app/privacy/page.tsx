@@ -1,3 +1,5 @@
+import { OPERATOR_EMAIL, OPERATOR_NAME } from "@/lib/branding";
+
 export default function PrivacyPage() {
   return (
     <div className="max-w-4xl mx-auto">
@@ -11,7 +13,20 @@ export default function PrivacyPage() {
             This website is operated privately and without commercial purposes.
           </p>
           <p className="text-gray-700 dark:text-gray-300 leading-relaxed mt-2">
-            Responsible for data processing: <a href="mailto:hoodinformatik@gmail.com" className="text-blue-600 dark:text-blue-400 hover:underline">hoodinformatik@gmail.com</a>
+            Responsible for data processing:{" "}
+            {OPERATOR_NAME || OPERATOR_EMAIL ? (
+              <>
+                {OPERATOR_NAME}
+                {OPERATOR_NAME && OPERATOR_EMAIL ? ", " : ""}
+                {OPERATOR_EMAIL && (
+                  <a href={`mailto:${OPERATOR_EMAIL}`} className="text-blue-600 dark:text-blue-400 hover:underline">{OPERATOR_EMAIL}</a>
+                )}
+              </>
+            ) : (
+              <span className="italic">
+                not configured (the operator of this instance sets NEXT_PUBLIC_OPERATOR_NAME and NEXT_PUBLIC_CONTACT_EMAIL)
+              </span>
+            )}
           </p>
         </section>
 

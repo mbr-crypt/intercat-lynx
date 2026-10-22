@@ -205,6 +205,6 @@ class TestHealthEndpoints:
         
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
-        assert data["name"] == "OpenThreat API"
+        assert data["name"] == "InterCat Lynx API"
         assert "version" in data
         assert "endpoints" in data

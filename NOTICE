@@ -1,0 +1,56 @@
+InterCat Lynx
+=============
+
+InterCat Lynx is a fork of OpenThreat.
+
+Origin
+------
+  OpenThreat
+  Author:     hoodinformatik
+  Repository: https://github.com/hoodinformatik/OpenThreat
+  Forked at:  commit 7e07f0d (2026-08-23)
+
+This fork
+---------
+  Repository: https://github.com/mbr-crypt/intercat-lynx
+  Maintainer: Moritz Rehmann (Intercat, https://intercat.it)
+
+Licence
+-------
+This project is licensed under the GNU Affero General Public License,
+version 3 (AGPL-3.0). See the file LICENSE.
+
+The original README claimed "Apache License 2.0", but the file LICENSE of the
+original repository is the AGPL-3.0. This fork follows the file LICENSE.
+
+If you run a modified version of this software as a network service, section
+13 of the AGPL requires you to offer the users of that service the source code
+of your version. The web interface of this fork links to its source code in the
+footer; keep such a link, pointing to your own source, if you fork it.
+
+Modifications (AGPL section 5a)
+-------------------------------
+All changes since the fork point are recorded in the git history of this
+repository. The main ones (2026-10):
+
+  - Test suite made runnable without Redis and PostgreSQL; failing tests fixed
+  - SQL migration runner fixed (CREATE INDEX CONCURRENTLY, statistics table)
+  - Fixes for upstream issues #44, #45 and #46
+  - Security updates of dependencies
+  - Web based setup assistant, runtime settings stored in the database
+  - Passwords hashed with Argon2id; two-factor login (TOTP, recovery codes)
+  - Rebranding to "InterCat Lynx", new logo
+
+Name and logo
+-------------
+The names "Intercat" and "InterCat Lynx" and the logo files in
+docs/assets/logo and frontend/app (icon files) are not covered by the AGPL
+(see AGPL section 7, "Additional terms", paragraph e): the licence grants no
+rights to use these names or logos as trademarks. If you publish a modified
+version, please give it a different name and logo and say that it is based on
+InterCat Lynx and OpenThreat.
+
+Third party software
+--------------------
+Dependencies keep their own licences; see requirements.txt and
+frontend/package.json.

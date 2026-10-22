@@ -77,20 +77,20 @@ async def join_waitlist(data: WaitlistJoin, db: Session = Depends(get_db)):
 
         await email_service.send_email(
             to_email=data.email,
-            subject="🚀 Verify Your OpenThreat Waitlist Signup",
+            subject="🚀 Verify Your InterCat Lynx Waitlist Signup",
             html_content=f"""
             <html>
                 <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9fafb;">
                     <div style="background: white; border-radius: 12px; padding: 40px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
                         <div style="text-align: center; margin-bottom: 30px;">
-                            <h1 style="color: #2563eb; margin: 0;">🛡️ OpenThreat</h1>
+                            <h1 style="color: #2563eb; margin: 0;">🛡️ InterCat Lynx</h1>
                             <p style="color: #6b7280; font-size: 16px; margin-top: 8px;">Democratizing Threat Intelligence</p>
                         </div>
 
                         <div style="margin-bottom: 30px;">
                             <h2 style="color: #1f2937; margin-top: 0;">Verify Your Email</h2>
                             <p style="color: #4b5563; font-size: 16px; line-height: 1.6;">
-                                Thanks for joining the OpenThreat waitlist! Please verify your email address by clicking the button below:
+                                Thanks for joining the InterCat Lynx waitlist! Please verify your email address by clicking the button below:
                             </p>
                         </div>
 
@@ -104,7 +104,7 @@ async def join_waitlist(data: WaitlistJoin, db: Session = Depends(get_db)):
 
                         <div style="background: #eff6ff; border-left: 4px solid #2563eb; padding: 16px; margin: 30px 0; border-radius: 4px;">
                             <p style="color: #1e40af; margin: 0; font-size: 14px; line-height: 1.6;">
-                                <strong>Why OpenThreat?</strong><br>
+                                <strong>Why InterCat Lynx?</strong><br>
                                 • Real-time CVE tracking from CISA, NVD, BSI-CERT<br>
                                 • AI-powered threat analysis with MITRE ATT&CK<br>
                                 • Privacy-first approach - no tracking<br>
@@ -125,14 +125,14 @@ async def join_waitlist(data: WaitlistJoin, db: Session = Depends(get_db)):
             </html>
             """,
             text_content=f"""
-OpenThreat - Verify Your Email
+InterCat Lynx - Verify Your Email
 
-Thanks for joining the OpenThreat waitlist!
+Thanks for joining the InterCat Lynx waitlist!
 
 Please verify your email address by clicking this link:
 {verification_link}
 
-Why OpenThreat?
+Why InterCat Lynx?
 • Real-time CVE tracking from CISA, NVD, BSI-CERT
 • AI-powered threat analysis with MITRE ATT&CK mapping
 • Privacy-first approach - no tracking
