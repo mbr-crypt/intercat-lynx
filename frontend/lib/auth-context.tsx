@@ -9,12 +9,21 @@ interface User {
   full_name?: string | null;
   role: 'admin' | 'analyst' | 'viewer';
   is_active: boolean;
+  totp_enabled?: boolean;
+}
+
+export interface LoginResult {
+  /** true when the account has two-factor authentication: ask for a code next */
+  mfaRequired: boolean;
+  mfaToken?: string;
 }
 
 interface AuthContextType {
   user: User | null;
   token: string | null;
-  login: (username: string, password: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<LoginResult>;
+  loginWithCode: (mfaToken: string, code: string) => Promise<void>;
+  refreshUser: () => Promise<void>;
   logout: () => void;
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -63,27 +72,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const login = async (username: string, password: string) => {
+  const startSession = async (authToken: string) => {
+    localStorage.setItem('auth_token', authToken);
+    setToken(authToken);
+    await fetchUser(authToken);
+  };
+
+  const login = async (username: string, password: string): Promise<LoginResult> => {
     const response = await fetch('/api/v1/auth/login', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || 'Login failed');
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.detail || 'Anmeldung fehlgeschlagen');
     }
 
     const data = await response.json();
-    const authToken = data.access_token;
+    if (data.mfa_required) {
+      return { mfaRequired: true, mfaToken: data.mfa_token };
+    }
+    await startSession(data.access_token);
+    return { mfaRequired: false };
+  };
 
-    localStorage.setItem('auth_token', authToken);
-    setToken(authToken);
+  const loginWithCode = async (mfaToken: string, code: string) => {
+    const response = await fetch('/api/v1/auth/login/2fa', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mfa_token: mfaToken, code }),
+    });
 
-    await fetchUser(authToken);
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.detail || 'Code ungültig');
+    }
+
+    const data = await response.json();
+    await startSession(data.access_token);
+  };
+
+  const refreshUser = async () => {
+    if (token) await fetchUser(token);
   };
 
   const logout = () => {
@@ -109,6 +141,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         user,
         token,
         login,
+        loginWithCode,
+        refreshUser,
         logout,
         isAuthenticated: !!user,
         isLoading,

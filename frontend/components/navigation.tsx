@@ -21,6 +21,9 @@ export function Navigation() {
     { href: "/about", label: "About", icon: Info },
   ];
 
+  // The setup assistant runs without site navigation
+  if (pathname.startsWith("/setup")) return null;
+
   return (
     <nav className="border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 fixed top-0 left-0 right-0 z-40 transition-colors">
         <div className="container mx-auto px-4">

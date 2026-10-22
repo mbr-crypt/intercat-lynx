@@ -10,6 +10,9 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
+# Strong test-only key so encryption/JWT never fall back to the public default
+os.environ.setdefault("SECRET_KEY", "pytest-only-secret-" + "k" * 40)
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -48,6 +51,12 @@ def isolate_stats_cache(monkeypatch):
             return None
 
     monkeypatch.setattr(stats_module, "redis_client", _NoCache())
+
+
+@pytest.fixture()
+def session_factory():
+    """Session factory bound to the in-memory test database."""
+    return TestingSessionLocal
 
 
 @pytest.fixture(scope="function")

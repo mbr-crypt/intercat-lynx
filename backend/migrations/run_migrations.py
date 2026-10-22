@@ -20,6 +20,38 @@ _CONCURRENT_INDEX = re.compile(
 )
 
 
+def run_alembic_upgrade() -> None:
+    """
+    Bring the database schema to the newest version (``alembic upgrade head``).
+
+    Runs at every start so that a fresh installation needs no manual command -
+    the setup assistant can start on an empty database. A PostgreSQL advisory
+    lock makes sure that several backend containers starting at the same time
+    do not migrate in parallel.
+    """
+    if engine.dialect.name != "postgresql":
+        return
+
+    from alembic import command
+    from alembic.config import Config
+
+    root = Path(__file__).resolve().parents[2]
+    ini = root / "alembic.ini"
+    if not ini.exists():
+        logger.warning("alembic.ini not found, skipping schema upgrade")
+        return
+
+    cfg = Config(str(ini))
+    cfg.set_main_option("script_location", str(root / "alembic"))
+
+    with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as lock:
+        lock.execute(text("SELECT pg_advisory_lock(727270101)"))
+        try:
+            command.upgrade(cfg, "head")
+        finally:
+            lock.execute(text("SELECT pg_advisory_unlock(727270101)"))
+
+
 def run_migrations():
     """
     Run all SQL migrations in the migrations directory.

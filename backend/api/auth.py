@@ -12,7 +12,9 @@ from ..database import get_db
 from ..dependencies.auth import get_current_user, require_admin
 from ..models import EmailVerification, User, UserRole
 from ..schemas.auth import (
+    LoginResponse,
     PasswordChange,
+    TwoFactorLogin,
     Token,
     UserCreate,
     UserLogin,
@@ -27,10 +29,13 @@ from ..schemas.email_verification import (
     EmailVerificationRequest,
     VerificationResponse,
 )
+from ..security import mfa, passwords
+from ..services import settings_service
 from ..services.email_service import email_service
 from ..utils.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     create_access_token,
+    decode_access_token,
     get_password_hash,
     verify_password,
 )
@@ -56,6 +61,12 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
     **Returns:**
     - User profile information
     """
+    if not settings_service.registration_allowed(db):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Registration is currently closed. Ask an administrator for an account.",
+        )
+
     # Check if email already exists
     existing_user = db.query(User).filter(User.email == user_data.email).first()
     if existing_user:
@@ -102,61 +113,93 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
     return new_user
 
 
-@router.post("/login", response_model=Token)
-async def login(credentials: UserLogin, db: Session = Depends(get_db)):
-    """
-    Login with username and password.
+MAX_FAILED_ATTEMPTS = 5
+LOCK_MINUTES = 30
+MFA_TOKEN_MINUTES = 5
 
-    **Returns:**
-    - JWT access token
-    - Token type (bearer)
-    - Expiration time in seconds
 
-    **Security:**
-    - Account lockout after 5 failed attempts (30 minutes)
-    - Failed login attempts are tracked
-    """
-    # Get user by username
-    user = db.query(User).filter(User.username == credentials.username).first()
+def _register_failure(user: User, db: Session) -> None:
+    """Count a failed password/2FA attempt and lock the account after 5."""
+    user.failed_login_attempts += 1
+    if user.failed_login_attempts >= MAX_FAILED_ATTEMPTS:
+        user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=LOCK_MINUTES)
+        logger.warning(f"Account locked due to failed attempts: {user.username}")
+    db.commit()
 
-    if not user:
-        logger.warning(
-            f"Login attempt with non-existent username: {credentials.username}"
-        )
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-        )
 
-    # Check if account is locked
-    if user.locked_until and user.locked_until > datetime.now(timezone.utc):
+def _raise_if_locked(user: User) -> None:
+    locked = user.locked_until
+    if locked is not None and locked.tzinfo is None:
+        locked = locked.replace(tzinfo=timezone.utc)
+    if locked and locked > datetime.now(timezone.utc):
         logger.warning(f"Login attempt on locked account: {user.username}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Account is locked until {user.locked_until.isoformat()}. Too many failed login attempts.",
+            detail="Account is temporarily locked after too many failed attempts.",
         )
 
-    # Verify password
-    if not verify_password(credentials.password, user.hashed_password):
-        # Increment failed login attempts
-        user.failed_login_attempts += 1
 
-        # Lock account after 5 failed attempts
-        if user.failed_login_attempts >= 5:
-            user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=30)
-            logger.warning(f"Account locked due to failed attempts: {user.username}")
+def issue_access_token(user: User) -> dict:
+    token = create_access_token(
+        {
+            "user_id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "role": user.role.value,
+        }
+    )
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    }
 
-        db.commit()
 
-        logger.warning(
-            f"Failed login attempt for user: {user.username} (attempt {user.failed_login_attempts})"
-        )
+def _complete_login(user: User, db: Session) -> dict:
+    user.failed_login_attempts = 0
+    user.locked_until = None
+    user.last_login_at = datetime.now(timezone.utc)
+    db.commit()
+    logger.info(f"User logged in: {user.username}")
+    return issue_access_token(user)
+
+
+@router.post("/login", response_model=LoginResponse)
+async def login(credentials: UserLogin, db: Session = Depends(get_db)):
+    """
+    Login step 1: username and password.
+
+    If the account has two-factor authentication enabled the response contains
+    ``mfa_required: true`` and a short-lived ``mfa_token``; finish with
+    ``POST /login/2fa``. Otherwise the access token is returned directly.
+
+    **Security:**
+    - Passwords are verified against Argon2id (legacy bcrypt hashes are
+      accepted and upgraded to Argon2id on success)
+    - Unknown users cost the same time as wrong passwords (no user enumeration
+      through timing)
+    - Account lockout after 5 failed attempts (30 minutes)
+    """
+    user = db.query(User).filter(User.username == credentials.username).first()
+
+    if not user:
+        passwords.burn_password_check(credentials.password)
+        logger.warning("Login attempt with non-existent username")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
         )
 
-    # Check if user is active
+    _raise_if_locked(user)
+
+    if not verify_password(credentials.password, user.hashed_password):
+        _register_failure(user, db)
+        logger.warning(f"Failed login attempt for user: {user.username}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+        )
+
     if not user.is_active:
         logger.warning(f"Login attempt on inactive account: {user.username}")
         raise HTTPException(
@@ -164,29 +207,54 @@ async def login(credentials: UserLogin, db: Session = Depends(get_db)):
             detail="Account is inactive. Please contact administrator.",
         )
 
-    # Reset failed login attempts on successful login
-    user.failed_login_attempts = 0
-    user.locked_until = None
-    user.last_login_at = datetime.now(timezone.utc)
-    db.commit()
+    # Silent upgrade of legacy bcrypt hashes to Argon2id
+    if passwords.needs_rehash(user.hashed_password):
+        user.hashed_password = get_password_hash(credentials.password)
+        db.commit()
 
-    # Create access token
-    token_data = {
-        "user_id": user.id,
-        "username": user.username,
-        "email": user.email,
-        "role": user.role.value,
-    }
+    if user.totp_enabled:
+        mfa_token = create_access_token(
+            {"user_id": user.id, "purpose": "mfa"},
+            expires_delta=timedelta(minutes=MFA_TOKEN_MINUTES),
+        )
+        return {"mfa_required": True, "mfa_token": mfa_token}
 
-    access_token = create_access_token(token_data)
+    return _complete_login(user, db)
 
-    logger.info(f"User logged in: {user.username}")
 
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES * 60,  # Convert to seconds
-    }
+@router.post("/login/2fa", response_model=LoginResponse)
+async def login_second_factor(data: TwoFactorLogin, db: Session = Depends(get_db)):
+    """
+    Login step 2: six-digit code from the authenticator app, or a one-time
+    recovery code. Failed codes count towards the same lockout as passwords,
+    so the 1-in-a-million guess cannot be brute-forced.
+    """
+    invalid = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid or expired verification",
+    )
+    try:
+        payload = decode_access_token(data.mfa_token, purpose="mfa")
+    except HTTPException:
+        raise invalid
+    if "user_id" not in payload:
+        raise invalid
+
+    user = db.query(User).filter(User.id == payload["user_id"]).first()
+    if not user or not user.is_active or not user.totp_enabled:
+        raise invalid
+
+    _raise_if_locked(user)
+
+    if not mfa.check_second_factor(user, data.code, db):
+        _register_failure(user, db)
+        logger.warning(f"Failed 2FA attempt for user: {user.username}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid verification code",
+        )
+
+    return _complete_login(user, db)
 
 
 @router.get("/me", response_model=UserResponse)

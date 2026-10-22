@@ -21,10 +21,16 @@ export default function UserMenu() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // No sign-up/sign-in flow is offered yet - nothing to show here for
-  // logged-out visitors.
+  // Logged-out visitors get a sign-in link
   if (!isAuthenticated) {
-    return null;
+    return (
+      <Link
+        href="/auth"
+        className="text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-primary"
+      >
+        Anmelden
+      </Link>
+    );
   }
 
   const getRoleBadgeColor = (role: string) => {
