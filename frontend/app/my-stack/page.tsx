@@ -226,7 +226,7 @@ export default function MyStackPage() {
   return (
     <div className="space-y-8">
       <div className="text-center space-y-3">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold tracking-wide uppercase">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-link text-xs font-semibold tracking-wide uppercase">
           <Shield className="h-3.5 w-3.5" />
           Privacy-First
         </div>
@@ -266,7 +266,7 @@ export default function MyStackPage() {
                     onClick={() => setActiveId(stack.id)}
                     className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
                       activeId === stack.id
-                        ? "bg-primary/10 text-primary font-medium"
+                        ? "bg-primary/10 text-link font-medium"
                         : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
                     }`}
                   >
@@ -511,7 +511,7 @@ export default function MyStackPage() {
                                     className="block p-3 rounded-md border border-gray-200 dark:border-gray-700 hover:border-primary transition-colors"
                                   >
                                     <div className="flex items-center gap-2 flex-wrap">
-                                      <span className="font-mono text-sm font-semibold text-primary">
+                                      <span className="font-mono text-sm font-semibold text-link">
                                         {vuln.cve_id}
                                       </span>
                                       {vuln.severity && (
@@ -520,7 +520,7 @@ export default function MyStackPage() {
                                         </Badge>
                                       )}
                                       {isNew(activeStack, vuln.published_at) && (
-                                        <Badge className="bg-primary/10 text-primary border-primary/30">
+                                        <Badge className="bg-primary/10 text-link border-primary/30">
                                           <Sparkles className="h-3 w-3 mr-1" />
                                           New
                                         </Badge>

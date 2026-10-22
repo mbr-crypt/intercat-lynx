@@ -19,49 +19,52 @@ body {
 }
 
 @layer base {
+  /* Intercat Corporate Design. Light mode keeps the same blue on a clean white. */
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --background: 210 14% 97%;
+    --foreground: 220 8% 8%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 220 8% 8%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
-    --radius: 0.5rem;
+    --popover-foreground: 220 8% 8%;
+    --primary: 208 68% 42%;            /* #2271b3 brand blue */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 14% 94%;
+    --secondary-foreground: 220 8% 12%;
+    --muted: 210 14% 94%;
+    --muted-foreground: 213 9% 40%;
+    --accent: 210 14% 94%;
+    --accent-foreground: 220 8% 12%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 210 12% 88%;
+    --input: 210 12% 88%;
+    --ring: 208 68% 42%;
+    --link: 208 68% 42%;               /* brand blue is fine as text on white */
+    --radius: 0.5rem;                  /* buttons 8 px */
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 217.2 32.6% 17.5%;
-    --card-foreground: 210 40% 98%;
-    --popover: 217.2 32.6% 17.5%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
+    --background: 220 8% 8%;           /* #131416 */
+    --foreground: 0 0% 100%;
+    --card: 216 8% 12%;                /* #1c1e21 surface */
+    --card-foreground: 0 0% 100%;
+    --popover: 216 8% 12%;
+    --popover-foreground: 0 0% 100%;
+    --primary: 208 68% 42%;            /* #2271b3, white text */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 216 8% 12%;
+    --secondary-foreground: 210 14% 85%;
+    --muted: 216 8% 12%;
+    --muted-foreground: 213 10% 62%;
+    --accent: 214 8% 17%;              /* #26292d surface 2 */
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 62% 40%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 214 8% 18%;              /* #2a2d31 line */
+    --input: 214 8% 18%;
+    --ring: 205 100% 75%;
+    --link: 205 100% 75%;              /* #7fcbff accent. Brand blue is too dark as text on dark. */
   }
 }
 
@@ -71,5 +74,44 @@ body {
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+/* Intercat key visual: 60 px grid in accent blue (9 %), fading out towards the edges,
+   plus exactly one brand-blue light cone behind the mark. */
+@layer components {
+  .key-visual {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    border-radius: 1rem;
+  }
+  .key-visual::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -2;
+    background-image:
+      linear-gradient(to right, rgb(127 203 255 / 0.09) 1px, transparent 1px),
+      linear-gradient(to bottom, rgb(127 203 255 / 0.09) 1px, transparent 1px);
+    background-size: 60px 60px;
+    -webkit-mask-image: radial-gradient(ellipse at center top, #000 20%, transparent 75%);
+    mask-image: radial-gradient(ellipse at center top, #000 20%, transparent 75%);
+  }
+  .key-visual::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: -10%;
+    width: 36rem;
+    height: 28rem;
+    max-width: 100%;
+    transform: translateX(-50%);
+    z-index: -1;
+    background: radial-gradient(ellipse at top, rgb(34 113 179 / 0.45), transparent 70%);
+    filter: blur(8px);
+  }
+  :root:not(.dark) .key-visual::after {
+    background: radial-gradient(ellipse at top, rgb(34 113 179 / 0.18), transparent 70%);
   }
 }

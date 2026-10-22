@@ -125,7 +125,7 @@ export default async function VulnerabilityDetailPage({
                   <p className="text-sm text-gray-600 dark:text-gray-400">Priority</p>
                   <Tooltip content={explainPriorityScore(vuln.priority_score)} />
                 </div>
-                <p className="text-2xl font-bold text-primary">
+                <p className="text-2xl font-bold text-link">
                   {(vuln.priority_score * 100).toFixed(0)}%
                 </p>
               </div>
@@ -309,7 +309,7 @@ export default async function VulnerabilityDetailPage({
                       href={ref.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-primary hover:underline break-all"
+                      className="text-link hover:underline break-all"
                     >
                       {ref.url}
                     </a>

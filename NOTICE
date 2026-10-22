@@ -40,15 +40,34 @@ repository. The main ones (2026-10):
   - Web based setup assistant, runtime settings stored in the database
   - Passwords hashed with Argon2id; two-factor login (TOTP, recovery codes)
   - Rebranding to "InterCat Lynx", new logo
+  - User interface in the Intercat corporate design (colours, dark mode default,
+    Intercat wordmark in the footer); privacy policy page left blank for the operator
 
-Name and logo
--------------
-The names "Intercat" and "InterCat Lynx" and the logo files in
-docs/assets/logo and frontend/app (icon files) are not covered by the AGPL
-(see AGPL section 7, "Additional terms", paragraph e): the licence grants no
-rights to use these names or logos as trademarks. If you publish a modified
-version, please give it a different name and logo and say that it is based on
-InterCat Lynx and OpenThreat.
+Names and logos (rights reserved)
+---------------------------------
+Copyright (c) 2026 Moritz Rehmann. All rights reserved for:
+
+  - the names "Intercat" and "InterCat Lynx" (also "Lynx" as the name of this
+    product family member), and
+  - the logos "Intercat" and "InterCat Lynx": the Intercat wordmark and logo and
+    the lynx mask logo, in all variants, including the files in
+    docs/assets/logo, frontend/public/brand, the icon files in frontend/app and
+    the drawing in frontend/components/LynxMark.tsx.
+
+These names and logos belong to Moritz Rehmann. They are NOT part of the
+software that is licensed under the AGPL-3.0. The AGPL grants no rights to
+them (see AGPL section 7, "Additional terms", paragraph e: no rights to use
+trade names, trademarks or service marks).
+
+You may not use them for your own product or service, and you may not suggest
+that your version is made or endorsed by Intercat. If you publish a modified
+version, please give it a different name and a different logo, and say that it
+is based on InterCat Lynx and OpenThreat. The source code itself stays free
+under the AGPL-3.0.
+
+Note: the AGPL source code of the original OpenThreat remains under the
+copyright of its authors. This notice only covers what is new in this fork:
+the names and the logos listed above.
 
 Third party software
 --------------------

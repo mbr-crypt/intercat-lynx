@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Shield, KeyRound } from 'lucide-react';
+import { KeyRound } from 'lucide-react';
+import { LynxMark } from '@/components/LynxMark';
 import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -61,9 +62,7 @@ export default function AuthPage() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="flex justify-center mb-4">
-            <div className="bg-primary p-3 rounded-2xl">
-              <Shield className="h-10 w-10 text-primary-foreground" />
-            </div>
+            <LynxMark variant="reticle" className="h-28 w-auto text-gray-900 dark:text-white" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">InterCat Lynx</h1>
         </div>

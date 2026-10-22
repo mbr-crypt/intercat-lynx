@@ -173,7 +173,7 @@ export function DashboardContent() {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
-          <Clock className="h-12 w-12 animate-spin mx-auto mb-4 text-primary" />
+          <Clock className="h-12 w-12 animate-spin mx-auto mb-4 text-link" />
           <p className="text-gray-600 dark:text-gray-400">Loading...</p>
         </div>
       </div>
@@ -184,7 +184,7 @@ export function DashboardContent() {
     <div className="space-y-8">
       {/* Hero Section with Search */}
       <div className="text-center space-y-6 py-10">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold tracking-wide uppercase">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-link text-xs font-semibold tracking-wide uppercase">
           <Shield className="h-3.5 w-3.5" />
           Live Threat Feed
         </div>
@@ -235,7 +235,7 @@ export function DashboardContent() {
                 variant="outline"
                 size="sm"
                 onClick={() => setShowFilters(!showFilters)}
-                className={hasActiveFilters ? "border-primary text-primary" : ""}
+                className={hasActiveFilters ? "border-primary text-link" : ""}
               >
                 <Filter className="h-4 w-4 md:mr-2" />
                 <span className="hidden md:inline">Filter</span>
@@ -309,7 +309,7 @@ export function DashboardContent() {
                   <CardContent className="p-6">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-2">
-                        <span className="font-mono text-sm font-semibold text-primary">
+                        <span className="font-mono text-sm font-semibold text-link">
                           {vuln.cve_id}
                         </span>
                         {vuln.severity && vuln.severity !== 'UNKNOWN' && (
@@ -325,7 +325,7 @@ export function DashboardContent() {
                         )}
                       </div>
 
-                      <h3 className="text-xl font-bold text-gray-900 dark:text-white hover:text-primary transition-colors mb-3">
+                      <h3 className="text-xl font-bold text-gray-900 dark:text-white hover:text-link transition-colors mb-3">
                         {displayTitle}
                       </h3>
 
