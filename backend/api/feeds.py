@@ -103,9 +103,9 @@ async def rss_feed(
         query.order_by(desc(Vulnerability.published_at)).limit(limit).all()
     )
 
-    title = "OpenThreat - Recent Vulnerabilities"
+    title = "InterCat Lynx - Recent Vulnerabilities"
     if exploited_only:
-        title = "OpenThreat - Exploited Vulnerabilities"
+        title = "InterCat Lynx - Exploited Vulnerabilities"
 
     rss_content = generate_rss_feed(
         vulnerabilities,
@@ -141,7 +141,7 @@ async def exploited_feed(
 
     rss_content = generate_rss_feed(
         vulnerabilities,
-        title="OpenThreat - Exploited Vulnerabilities",
+        title="InterCat Lynx - Exploited Vulnerabilities",
         description="CVEs actively exploited in the wild",
         base_url=base_url,
     )
@@ -173,7 +173,7 @@ async def critical_feed(
 
     rss_content = generate_rss_feed(
         vulnerabilities,
-        title="OpenThreat - Critical Vulnerabilities",
+        title="InterCat Lynx - Critical Vulnerabilities",
         description="Critical severity CVEs",
         base_url=base_url,
     )

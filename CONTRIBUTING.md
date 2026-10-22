@@ -1,6 +1,6 @@
-# Contributing to OpenThreat
+# Contributing to InterCat Lynx
 
-Thank you for your interest in contributing to OpenThreat! This document provides guidelines and instructions for contributing.
+Thank you for your interest in contributing to InterCat Lynx (a fork of OpenThreat)! This document provides guidelines and instructions for contributing.
 
 ## 🎯 Project Mission
 
@@ -43,8 +43,8 @@ OpenThreat aims to democratize threat intelligence by providing a free, open-sou
 
 1. **Clone the repository**
 ```bash
-git clone https://github.com/hoodinformatik/OpenThreat.git
-cd OpenThreat
+git clone https://github.com/mbr-crypt/intercat-lynx.git
+cd intercat-lynx
 ```
 
 2. **Start infrastructure**
@@ -202,14 +202,14 @@ git push origin feature/your-feature-name
 
 ## 📧 Questions?
 
-- **Email:** hoodinformatik@gmail.com
+- **Repository:** https://github.com/mbr-crypt/intercat-lynx
 - **GitHub Issues:** For bugs and features
 - **GitHub Discussions:** For questions and ideas
 
 ## 📜 License
 
-By contributing, you agree that your contributions will be licensed under the Apache License 2.0.
+By contributing, you agree that your contributions will be licensed under the GNU Affero General Public License v3.0 (AGPL-3.0), like the rest of the project.
 
 ---
 
-**Thank you for contributing to OpenThreat!** 🎉
+**Thank you for contributing to InterCat Lynx!** 🎉

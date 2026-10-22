@@ -195,4 +195,4 @@ python scripts/fetch_cisa_kev.py
 
 1. Check [DEVELOPMENT_SETUP.md](DEVELOPMENT_SETUP.md) for troubleshooting
 2. Open an issue on GitHub
-3. Contact: hoodinformatik@gmail.com
+3. Contact: see the repository https://github.com/mbr-crypt/intercat-lynx

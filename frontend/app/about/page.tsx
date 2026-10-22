@@ -1,13 +1,23 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Shield, Heart, Users, Book, Github, Mail, Rss } from "lucide-react";
+import { Heart, Users, Book, Github, Mail, Rss } from "lucide-react";
+import { LynxMark } from "@/components/LynxMark";
+import {
+  PRODUCT_NAME,
+  SOURCE_URL,
+  UPSTREAM_NAME,
+  UPSTREAM_URL,
+  LICENSE_NAME,
+  LICENSE_URL,
+  OPERATOR_EMAIL,
+} from "@/lib/branding";
 
 export default function AboutPage() {
   return (
     <div className="space-y-8">
       {/* Hero */}
       <div className="text-center space-y-4">
-        <Shield className="h-16 w-16 text-blue-600 dark:text-blue-400 mx-auto" />
-        <h1 className="text-4xl font-bold text-gray-900 dark:text-white">About OpenThreat</h1>
+        <LynxMark variant="reticle" className="h-40 w-auto text-gray-900 dark:text-white mx-auto" />
+        <h1 className="text-4xl font-bold text-gray-900 dark:text-white">About {PRODUCT_NAME}</h1>
         <p className="text-xl text-gray-600 dark:text-gray-400 max-w-3xl mx-auto">
           Democratizing threat intelligence for everyone - from security professionals
           to small businesses and non-profits.
@@ -25,7 +35,7 @@ export default function AboutPage() {
         <CardContent className="space-y-4">
           <p className="text-gray-700 dark:text-gray-300 leading-relaxed">
             Security information shouldn't be locked behind expensive subscriptions or
-            complex technical jargon. OpenThreat makes threat intelligence accessible
+            complex technical jargon. {PRODUCT_NAME} makes threat intelligence accessible
             to everyone by:
           </p>
           <ul className="space-y-2 text-gray-700 dark:text-gray-300">
@@ -297,25 +307,36 @@ export default function AboutPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-gray-700 dark:text-gray-300">
-            OpenThreat is open-source and community-driven. We welcome contributions!
+            {PRODUCT_NAME} is open source. It is a fork of{" "}
+            <a
+              href={UPSTREAM_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              {UPSTREAM_NAME}
+            </a>{" "}
+            by hoodinformatik and keeps the original history. Contributions are welcome.
           </p>
           <div className="flex flex-wrap gap-4">
             <a
-              href="https://github.com/hoodinformatik/OpenThreat"
+              href={SOURCE_URL}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center space-x-2 px-4 py-2 bg-gray-900 dark:bg-gray-700 text-white rounded-md hover:bg-gray-800 dark:hover:bg-gray-600 transition-colors"
             >
               <Github className="h-5 w-5" />
-              <span>View on GitHub</span>
+              <span>Source code</span>
             </a>
-            <a
-              href="mailto:hoodinformatik@gmail.com"
-              className="inline-flex items-center space-x-2 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-            >
-              <Mail className="h-5 w-5" />
-              <span>Contact Us</span>
-            </a>
+            {OPERATOR_EMAIL && (
+              <a
+                href={`mailto:${OPERATOR_EMAIL}`}
+                className="inline-flex items-center space-x-2 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              >
+                <Mail className="h-5 w-5" />
+                <span>Contact</span>
+              </a>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -329,8 +350,20 @@ export default function AboutPage() {
           <div>
             <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Open Source License</h4>
             <p className="text-sm text-gray-700 dark:text-gray-300">
-              OpenThreat is licensed under the Apache License 2.0. You're free to use,
-              modify, and distribute this software, even for commercial purposes.
+              {PRODUCT_NAME} is licensed under the{" "}
+              <a
+                href={LICENSE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 dark:text-blue-400 hover:underline"
+              >
+                {LICENSE_NAME}
+              </a>
+              . You may use, modify and distribute it, including commercially. If you
+              modify it and let others use it over a network, you must offer them the
+              source code of your version under the same licence. The name and logo of
+              InterCat are not covered by this licence, see the NOTICE file in the
+              source repository.
             </p>
           </div>
           <div>

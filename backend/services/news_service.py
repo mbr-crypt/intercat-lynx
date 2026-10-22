@@ -63,7 +63,7 @@ class NewsService:
     def __init__(self):
         self.session = requests.Session()
         self.session.headers.update(
-            {"User-Agent": "OpenThreat/1.0 (Security News Aggregator)"}
+            {"User-Agent": "InterCat-Lynx/0.1 (fork of OpenThreat; security news aggregator)"}
         )
 
     def initialize_default_sources(self, db: Session) -> int:

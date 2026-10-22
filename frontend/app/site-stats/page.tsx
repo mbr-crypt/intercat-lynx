@@ -374,7 +374,7 @@ export default function SiteStatsPage() {
               Privacy-Friendly Analytics
             </h4>
             <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
-              OpenThreat uses privacy-respecting analytics. We don&apos;t track
+              This instance uses privacy-respecting analytics. We don&apos;t track
               personal information, use cookies for tracking, or share data
               with third parties. All visitor data is anonymized and stored
               securely.

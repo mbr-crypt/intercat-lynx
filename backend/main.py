@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 # Create FastAPI app
 app = FastAPI(
-    title="OpenThreat API",
+    title="InterCat Lynx API",
     description="Public Threat Intelligence Dashboard - Democratizing Threat Intelligence",
     version="0.1.0",
     docs_url="/docs",
@@ -140,9 +140,9 @@ app.include_router(analytics.router, prefix="/api/v1", tags=["Analytics"])
 async def root():
     """Root endpoint with API information."""
     return {
-        "name": "OpenThreat API",
+        "name": "InterCat Lynx API",
         "version": "0.1.0",
-        "description": "Public Threat Intelligence Dashboard",
+        "description": "Vulnerability intelligence (fork of OpenThreat)",
         "docs": "/docs",
         "endpoints": {
             "health": "/health",
@@ -156,7 +156,7 @@ async def root():
 @app.on_event("startup")
 async def startup_event():
     """Startup event handler."""
-    logger.info("🚀 OpenThreat API starting...")
+    logger.info("🚀 InterCat Lynx API starting...")
 
     # Bring the schema up to date (fresh installs need no manual command)
     try:
@@ -204,7 +204,7 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """Shutdown event handler."""
-    logger.info("👋 OpenThreat API shutting down...")
+    logger.info("👋 InterCat Lynx API shutting down...")
 
 
 if __name__ == "__main__":

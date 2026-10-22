@@ -126,16 +126,16 @@ class EmailService:
     def _get_subject(self, verification_type: str) -> str:
         """Get email subject based on verification type."""
         if verification_type == "registration":
-            return "OpenThreat - Verify Your Email Address"
+            return "InterCat Lynx - Verify Your Email Address"
         elif verification_type == "email_change":
-            return "OpenThreat - Confirm Email Change"
-        return "OpenThreat - Verification Code"
+            return "InterCat Lynx - Confirm Email Change"
+        return "InterCat Lynx - Verification Code"
 
     def _get_message(self, code: str, verification_type: str) -> str:
         """Get email message based on verification type."""
         if verification_type == "registration":
             return f"""
-Welcome to OpenThreat!
+Welcome to InterCat Lynx!
 
 Your verification code is: {code}
 
@@ -144,7 +144,7 @@ This code will expire in 15 minutes.
 If you didn't create an account, please ignore this email.
 
 Best regards,
-OpenThreat Team
+InterCat Lynx Team
 """
         elif verification_type == "email_change":
             return f"""
@@ -157,7 +157,7 @@ This code will expire in 15 minutes.
 If you didn't request this change, please secure your account immediately.
 
 Best regards,
-OpenThreat Team
+InterCat Lynx Team
 """
         return f"Your verification code is: {code}"
 

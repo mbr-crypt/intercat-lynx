@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Shield, BarChart3, Info, Menu, X, Newspaper, TrendingUp, Layers } from "lucide-react";
+import { BarChart3, Info, Menu, X, Newspaper, TrendingUp, Layers } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { LynxMark } from "./LynxMark";
+import { PRODUCT_NAME, SOURCE_URL } from "@/lib/branding";
 import UserMenu from "./user-menu";
 import { NotificationCenter } from "./NotificationCenter";
 import { ThemeToggle } from "./ThemeToggle";
@@ -30,9 +32,9 @@ export function Navigation() {
           <div className="flex h-16 items-center justify-between">
             <div className="flex items-center space-x-8">
               <Link href="/" className="flex items-center space-x-2">
-                <Shield className="h-8 w-8 text-primary" />
+                <LynxMark variant="mask" className="h-8 w-auto text-gray-900 dark:text-white" />
                 <span className="text-xl font-bold text-gray-900 dark:text-white">
-                  OpenThreat
+                  {PRODUCT_NAME}
                 </span>
               </Link>
 
@@ -73,9 +75,11 @@ export function Navigation() {
 
               {/* GitHub Link - Hidden on mobile */}
               <a
-                href="https://github.com/hoodinformatik/OpenThreat"
+                href={SOURCE_URL}
                 target="_blank"
                 rel="noopener noreferrer"
+                aria-label="Source code"
+                title="Source code (AGPL-3.0)"
                 className="hidden md:block text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
               >
                 <svg
