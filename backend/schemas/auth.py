@@ -49,6 +49,49 @@ class Token(BaseModel):
     expires_in: int  # seconds
 
 
+class LoginResponse(BaseModel):
+    """Login result: either a token, or a request for the second factor."""
+
+    access_token: Optional[str] = None
+    token_type: str = "bearer"
+    expires_in: Optional[int] = None
+    mfa_required: bool = False
+    # Short-lived token that only allows completing the 2FA step
+    mfa_token: Optional[str] = None
+
+
+class TwoFactorLogin(BaseModel):
+    """Second step of login."""
+
+    mfa_token: str
+    code: str = Field(..., min_length=6, max_length=20)
+
+
+class TwoFactorSetupResponse(BaseModel):
+    secret: str
+    otpauth_uri: str
+    qr_svg: str
+
+
+class TwoFactorEnable(BaseModel):
+    code: str = Field(..., min_length=6, max_length=8)
+
+
+class TwoFactorConfirm(BaseModel):
+    """Re-authentication for sensitive 2FA changes."""
+
+    password: str
+    code: str = Field(..., min_length=6, max_length=20)
+
+
+class TwoFactorStart(BaseModel):
+    password: str
+
+
+class RecoveryCodesResponse(BaseModel):
+    recovery_codes: list
+
+
 class TokenData(BaseModel):
     """Data stored in JWT token."""
 
@@ -69,6 +112,7 @@ class UserResponse(BaseModel):
     is_verified: bool
     created_at: datetime
     last_login_at: Optional[datetime]
+    totp_enabled: bool = False
 
     class Config:
         from_attributes = True

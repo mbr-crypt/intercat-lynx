@@ -7,7 +7,7 @@ import secrets
 import string
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import JSON, Boolean, Column, Date, DateTime
+from sqlalchemy import JSON, BigInteger, Boolean, Column, Date, DateTime
 from sqlalchemy import Enum as SQLEnum
 from sqlalchemy import Float, ForeignKey, Index, Integer, String, Table, Text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
@@ -70,8 +70,37 @@ class User(Base):
     failed_login_attempts = Column(Integer, default=0, nullable=False)
     locked_until = Column(DateTime(timezone=True), nullable=True)
 
+    # Two-factor authentication (TOTP, RFC 6238)
+    # The secret is stored encrypted (backend/security/crypto.py), never in clear.
+    totp_secret_enc = Column(Text, nullable=True)
+    totp_enabled = Column(Boolean, default=False, nullable=False)
+    # Last accepted time-step; a code is only valid once (replay protection)
+    totp_last_counter = Column(BigInteger, nullable=True)
+    # HMAC hashes of the unused one-time recovery codes
+    recovery_codes = Column(JSON, nullable=True)
+
     def __repr__(self):
         return f"<User {self.username} ({self.email})>"
+
+
+class AppSetting(Base):
+    """
+    Key/value settings that the setup assistant and admins change at runtime
+    (SMTP server, NVD API key, setup state, ...). Values flagged ``is_secret``
+    are stored encrypted and never returned by the API.
+    """
+
+    __tablename__ = "app_settings"
+
+    key = Column(String(100), primary_key=True)
+    value = Column(Text, nullable=True)
+    is_secret = Column(Boolean, default=False, nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
 
 
 # Association table for many-to-many relationship between vulnerabilities and techniques
