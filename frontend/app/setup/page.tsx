@@ -2,7 +2,8 @@
 
 import { cloneElement, useCallback, useEffect, useId, useRef, useState } from 'react';
 import Link from 'next/link';
-import { CheckCircle2, AlertTriangle, XCircle, Shield, Loader2 } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, XCircle, Loader2 } from 'lucide-react';
+import { LynxMark } from '@/components/LynxMark';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { TwoFactorSettings } from '@/components/TwoFactorSettings';
@@ -101,7 +102,7 @@ export default function SetupPage() {
             <CardDescription>Der Assistent ist nicht mehr verfügbar.</CardDescription>
           </CardHeader>
           <CardContent>
-            <Link href="/auth" className="text-primary underline">Zur Anmeldung</Link>
+            <Link href="/auth" className="text-link underline">Zur Anmeldung</Link>
           </CardContent>
         </Card>
       </Shell>
@@ -213,7 +214,7 @@ function Shell({ step, children }: { step: Step; children: React.ReactNode }) {
       <div className="w-full max-w-2xl">
         <div className="text-center mb-6">
           <div className="flex justify-center mb-3">
-            <div className="bg-primary p-3 rounded-2xl"><Shield className="h-9 w-9 text-primary-foreground" /></div>
+            <LynxMark variant="reticle" className="h-24 w-auto text-gray-900 dark:text-white" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">InterCat Lynx einrichten</h1>
         </div>
@@ -222,7 +223,7 @@ function Shell({ step, children }: { step: Step; children: React.ReactNode }) {
             <li
               key={s.id}
               className={
-                i === current ? 'font-bold text-primary' : i < current ? 'text-green-600' : 'text-gray-400'
+                i === current ? 'font-bold text-link' : i < current ? 'text-green-600' : 'text-gray-400'
               }
             >
               {i < current ? '✓ ' : `${i + 1}. `}{s.label}

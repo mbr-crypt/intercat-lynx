@@ -28,3 +28,10 @@ export const LICENSE_URL = "https://www.gnu.org/licenses/agpl-3.0.html";
 /** Who runs this instance (shown on the privacy page). Optional. */
 export const OPERATOR_NAME = process.env.NEXT_PUBLIC_OPERATOR_NAME || "";
 export const OPERATOR_EMAIL = process.env.NEXT_PUBLIC_CONTACT_EMAIL || "";
+
+/**
+ * Rights holder of the names and logos "Intercat" and "InterCat Lynx".
+ * The source code is AGPL-3.0, the names and logos are NOT (see NOTICE).
+ */
+export const BRAND_OWNER = "Moritz Rehmann";
+export const BRAND_SITE_URL = "https://intercat.it";

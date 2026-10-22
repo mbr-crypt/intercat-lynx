@@ -27,13 +27,13 @@ export function Navigation() {
   if (pathname.startsWith("/setup")) return null;
 
   return (
-    <nav className="border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 fixed top-0 left-0 right-0 z-40 transition-colors">
+    <nav className="border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 fixed top-0 left-0 right-0 z-40 transition-colors">
         <div className="container mx-auto px-4">
           <div className="flex h-16 items-center justify-between">
             <div className="flex items-center space-x-8">
               <Link href="/" className="flex items-center space-x-2">
                 <LynxMark variant="mask" className="h-8 w-auto text-gray-900 dark:text-white" />
-                <span className="text-xl font-bold text-gray-900 dark:text-white">
+                <span className="text-xl font-semibold tracking-tight text-gray-900 dark:text-white">
                   {PRODUCT_NAME}
                 </span>
               </Link>
@@ -50,7 +50,7 @@ export function Navigation() {
                       className={cn(
                         "flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium transition-colors",
                         isActive
-                          ? "bg-primary/10 text-primary"
+                          ? "bg-primary/10 text-link"
                           : "text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white"
                       )}
                     >
@@ -118,7 +118,7 @@ export function Navigation() {
 
         {/* Mobile Dropdown Menu */}
         {mobileMenuOpen && (
-          <div className="md:hidden border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+          <div className="md:hidden border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
             <div className="container mx-auto px-4 py-4 space-y-2">
               {links.map((link) => {
                 const Icon = link.icon;
@@ -131,7 +131,7 @@ export function Navigation() {
                     className={cn(
                       "flex items-center space-x-3 px-4 py-3 rounded-lg text-base font-medium transition-colors",
                       isActive
-                        ? "bg-primary/10 text-primary"
+                        ? "bg-primary/10 text-link"
                         : "text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white"
                     )}
                   >

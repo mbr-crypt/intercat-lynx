@@ -9,15 +9,16 @@ import {
   LICENSE_NAME,
   LICENSE_URL,
   OPERATOR_EMAIL,
+  BRAND_OWNER,
 } from "@/lib/branding";
 
 export default function AboutPage() {
   return (
     <div className="space-y-8">
       {/* Hero */}
-      <div className="text-center space-y-4">
+      <div className="key-visual text-center space-y-4 px-4 py-12">
         <LynxMark variant="reticle" className="h-40 w-auto text-gray-900 dark:text-white mx-auto" />
-        <h1 className="text-4xl font-bold text-gray-900 dark:text-white">About {PRODUCT_NAME}</h1>
+        <h1 className="text-3xl md:text-4xl font-semibold text-gray-900 dark:text-white">About {PRODUCT_NAME}</h1>
         <p className="text-xl text-gray-600 dark:text-gray-400 max-w-3xl mx-auto">
           Democratizing threat intelligence for everyone - from security professionals
           to small businesses and non-profits.
@@ -361,9 +362,10 @@ export default function AboutPage() {
               </a>
               . You may use, modify and distribute it, including commercially. If you
               modify it and let others use it over a network, you must offer them the
-              source code of your version under the same licence. The name and logo of
-              InterCat are not covered by this licence, see the NOTICE file in the
-              source repository.
+              source code of your version under the same licence. The names and logos
+              &quot;Intercat&quot; and &quot;InterCat Lynx&quot; are the property of {BRAND_OWNER} (&copy; all
+              rights reserved) and are not covered by this licence, see the NOTICE file
+              in the source repository.
             </p>
           </div>
           <div>

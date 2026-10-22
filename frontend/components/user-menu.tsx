@@ -26,7 +26,7 @@ export default function UserMenu() {
     return (
       <Link
         href="/auth"
-        className="text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-primary"
+        className="text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-link"
       >
         Anmelden
       </Link>

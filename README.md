@@ -321,11 +321,17 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 GNU Affero General Public License v3.0 (AGPL-3.0), see [LICENSE](LICENSE).
 
 The original OpenThreat README stated "Apache 2.0", but the `LICENSE` file in the repository is the AGPL-3.0,
-so this fork follows the `LICENSE` file. Origin, changes and the use of the
-InterCat name and logo are described in [NOTICE](NOTICE).
+so this fork follows the `LICENSE` file. Origin and changes are described in [NOTICE](NOTICE).
 
 If you run a modified version as a network service, the AGPL requires you to offer your users the source
 code of that version. The web interface links to the source code in its footer.
+
+### Names and logos
+
+The names **"Intercat"** and **"InterCat Lynx"** and the logos of **Intercat** and **InterCat Lynx** are the
+property of Moritz Rehmann and are protected by his copyright (&copy; 2026 Moritz Rehmann, all rights reserved).
+They are **not** part of the AGPL-3.0 licensed source code. You may not use them for your own product or
+service. If you fork this project, please choose your own name and logo. Details are in [NOTICE](NOTICE).
 
 ## 🌟 Star History
 
