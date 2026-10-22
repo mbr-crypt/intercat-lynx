@@ -16,7 +16,7 @@ export default function AboutPage() {
     <div className="space-y-8">
       {/* Hero */}
       <div className="text-center space-y-4">
-        <LynxMark className="h-28 w-auto text-gray-900 dark:text-white mx-auto" />
+        <LynxMark variant="reticle" className="h-40 w-auto text-gray-900 dark:text-white mx-auto" />
         <h1 className="text-4xl font-bold text-gray-900 dark:text-white">About {PRODUCT_NAME}</h1>
         <p className="text-xl text-gray-600 dark:text-gray-400 max-w-3xl mx-auto">
           Democratizing threat intelligence for everyone - from security professionals
