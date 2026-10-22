@@ -1,3 +1,5 @@
+> **Status (InterCat Lynx):** Der Backend-Service `bsi_cert_service` wurde upstream im Cleanup (#17) entfernt; `scripts/fetch_bsi_cert.py` und der Endpunkt `bsi-cert/fetch` existieren nicht mehr. Dieses Dokument beschreibt die ursprüngliche Planung. Eine Neuimplementierung steht auf der Roadmap.
+
 # BSI CERT-Bund Integration
 
 ## 🇩🇪 Übersicht
