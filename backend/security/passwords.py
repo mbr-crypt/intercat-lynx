@@ -69,3 +69,48 @@ DUMMY_HASH = _hasher.hash("lynx-dummy-password-for-timing")
 def burn_password_check(password: str) -> None:
     """Spend the same time as a real verification (for unknown users)."""
     verify_password(password, DUMMY_HASH)
+
+
+# --- Password rules and temporary passwords ---------------------------------
+
+import secrets
+import string
+
+
+def validate_strength(password: str) -> str:
+    """
+    The password rules of the application (also used for admin-chosen passwords).
+    Returns the password or raises ValueError with a readable message.
+    """
+    if len(password) < 8:
+        raise ValueError("Password must be at least 8 characters long")
+    if len(password) > 100:
+        raise ValueError("Password must be at most 100 characters long")
+    if not any(c.isupper() for c in password):
+        raise ValueError("Password must contain at least one uppercase letter")
+    if not any(c.islower() for c in password):
+        raise ValueError("Password must contain at least one lowercase letter")
+    if not any(c.isdigit() for c in password):
+        raise ValueError("Password must contain at least one digit")
+    return password
+
+
+def generate_temporary_password(length: int = 16) -> str:
+    """
+    Random one-time password for accounts created or reset by an admin.
+
+    Letters and digits only (no look-alike characters, easy to read out), at least
+    one of each kind. The user has to replace it at the first login.
+    """
+    alphabet_lower = "abcdefghijkmnpqrstuvwxyz"  # without l, o
+    alphabet_upper = "ABCDEFGHJKLMNPQRSTUVWXYZ"  # without I, O
+    digits = "23456789"  # without 0, 1
+    chars = [
+        secrets.choice(alphabet_lower),
+        secrets.choice(alphabet_upper),
+        secrets.choice(digits),
+    ]
+    pool = alphabet_lower + alphabet_upper + digits
+    chars += [secrets.choice(pool) for _ in range(length - len(chars))]
+    secrets.SystemRandom().shuffle(chars)
+    return "".join(chars)

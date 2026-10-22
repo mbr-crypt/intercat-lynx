@@ -70,6 +70,14 @@ class User(Base):
     failed_login_attempts = Column(Integer, default=0, nullable=False)
     locked_until = Column(DateTime(timezone=True), nullable=True)
 
+    # Sessions: every access token carries this number ("tv"). Counting it up
+    # (password change, "sign out everywhere", demotion, deactivation) makes all
+    # tokens issued before invalid.
+    token_version = Column(Integer, default=0, nullable=False)
+    # Set when an admin created the account or reset the password: the user has to
+    # choose their own password before anything else works.
+    must_change_password = Column(Boolean, default=False, nullable=False)
+
     # Two-factor authentication (TOTP, RFC 6238)
     # The secret is stored encrypted (backend/security/crypto.py), never in clear.
     totp_secret_enc = Column(Text, nullable=True)
@@ -81,6 +89,31 @@ class User(Base):
 
     def __repr__(self):
         return f"<User {self.username} ({self.email})>"
+
+
+class AuditEvent(Base):
+    """
+    Who did what to which account (user management, security-relevant changes).
+
+    Actor and target are stored with their user name as well as their id and
+    without a foreign key, so the entry stays readable after an account is deleted.
+    """
+
+    __tablename__ = "audit_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+        index=True,
+    )
+    actor_id = Column(Integer, nullable=True)
+    actor_username = Column(String(100), nullable=True)
+    action = Column(String(50), nullable=False, index=True)
+    target_id = Column(Integer, nullable=True)
+    target_username = Column(String(100), nullable=True)
+    detail = Column(Text, nullable=True)
 
 
 class AppSetting(Base):
