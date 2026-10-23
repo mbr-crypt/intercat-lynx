@@ -118,6 +118,19 @@ def run_import(
         finally:
             db.close()
 
+        # The product picker searches this list; a failure must not fail the import
+        status.update(phase="catalog", message="Produktkatalog wird aufgebaut")
+        _write(session_factory, status)
+        db = session_factory()
+        try:
+            from .watchlist_service import rebuild_catalog
+
+            rebuild_catalog(db)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Product catalog rebuild failed: %s: %s", type(e).__name__, e)
+        finally:
+            db.close()
+
         status.update(
             state="done",
             phase="done",

@@ -107,6 +107,7 @@ from .api import (
     users,
     vulnerabilities,
     waitlist,
+    watchlist,
 )
 from .api.v1 import data_sources, llm
 
@@ -118,6 +119,9 @@ app.include_router(mfa.router, prefix="/api/v1/auth", tags=["Authentication"])
 app.include_router(csrf.router, prefix="/api/v1", tags=["Security"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
 app.include_router(users.router, prefix="/api/v1/admin/users", tags=["User management"])
+app.include_router(
+    watchlist.router, prefix="/api/v1/watchlist", tags=["Product selection"]
+)
 app.include_router(vulnerabilities.router, prefix="/api/v1", tags=["Vulnerabilities"])
 app.include_router(comments.router, prefix="/api/v1", tags=["Comments"])
 app.include_router(bookmarks.router, prefix="/api/v1", tags=["Bookmarks"])

@@ -143,3 +143,19 @@ def fetch_nvd_recent_task(self, days: int = 1) -> dict:
 
         # Retry with exponential backoff
         raise self.retry(exc=e, countdown=300 * (2**self.request.retries))
+
+
+@celery.task(name="tasks.rebuild_product_catalog")
+def rebuild_product_catalog_task() -> dict:
+    """Recount the vendor/product list the product picker searches in."""
+    from backend.services.watchlist_service import rebuild_catalog
+
+    db = next(get_db())
+    try:
+        result = rebuild_catalog(db)
+        return {"status": "success", **result}
+    except Exception as e:  # noqa: BLE001
+        logger.error("Product catalog rebuild failed: %s", e)
+        return {"status": "error", "message": str(e)}
+    finally:
+        db.close()
