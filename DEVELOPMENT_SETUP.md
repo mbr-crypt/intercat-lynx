@@ -32,13 +32,17 @@ async rewrites() {
 
 **Usage:**
 
+0. Start database and Redis (once):
+```bash
+docker compose -f docker-compose.dev.yml up -d
+alembic upgrade head          # creates the tables (only needed on the first run and after updates)
+```
+Without `DATABASE_URL` the backend uses `postgresql://openthreat:openthreat@localhost:5432/openthreat`, which is exactly what this file starts. `docker compose up` (without `-f`) starts the full production-like stack instead, see [QUICK_START.md](QUICK_START.md).
+
 1. Start backend (from project root):
 ```bash
-# Windows
-.\start_backend.bat
-
-# Or manually
 python -m uvicorn backend.main:app --reload --port 8001
+# Windows helper: .\start_backend.bat
 ```
 
 2. Start frontend (in new terminal):
@@ -78,8 +82,8 @@ docker run -d \
   --add-host host.docker.internal:host-gateway \
   nginx:alpine
 
-# Start backend and frontend normally
-cd backend && uvicorn main:app --reload --port 8001 &
+# Start backend (from the project root) and frontend normally
+python -m uvicorn backend.main:app --reload --port 8001 &
 cd frontend && npm run dev &
 
 # Access via nginx
@@ -103,6 +107,7 @@ open http://localhost
 
 - **`frontend/next.config.js`** - Next.js Rewrites for Development
 - **`nginx/nginx.conf`** - Production Nginx Config (with HTTPS)
+- **`nginx/nginx.http.conf`** - Production Nginx Config without HTTPS (default of `docker-compose.yml`)
 - **`nginx/nginx.dev.conf`** - Development Nginx Config (without HTTPS)
 - **`nginx/README.md`** - Detailed Nginx Documentation
 
@@ -119,7 +124,7 @@ cd backend
 uvicorn main:app --reload
 
 # ✅ CORRECT (from project root)
-cd C:\Users\hoodi\Desktop\OpenThreat
+cd /path/to/intercat-lynx
 python -m uvicorn backend.main:app --reload --port 8001
 
 # Or use the batch script
@@ -170,7 +175,7 @@ npm run dev
 ### ❌ DON'T
 
 - Don't hardcode absolute URLs in frontend code
-- Don't use `NEXT_PUBLIC_API_URL` for API calls (use relative paths)
+- Don't build API addresses by hand: use `apiBase()` from `frontend/lib/config.ts` (relative in the browser, `API_URL` on the server)
 - Don't push local nginx configs to production
 - Don't disable security features in production
 

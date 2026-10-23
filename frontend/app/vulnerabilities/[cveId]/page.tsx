@@ -24,16 +24,10 @@ import {
   explainCVE,
 } from "@/lib/explanations";
 import { notFound } from "next/navigation";
+import { apiBase } from "@/lib/config";
 
-// API URL - use internal Docker network URL for SSR, public URL for client
-const getApiUrl = () => {
-  // Server-side (SSR): use internal Docker network URL
-  if (typeof window === 'undefined') {
-    return process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001';
-  }
-  // Client-side: use public URL
-  return process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001';
-};
+// Server-side rendering talks to the backend directly (see lib/config.ts)
+const getApiUrl = apiBase;
 
 async function fetchVulnerability(cveId: string): Promise<VulnerabilityDetail> {
   const apiUrl = getApiUrl();

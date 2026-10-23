@@ -1,11 +1,21 @@
 # Nginx Configuration
 
-This directory contains two nginx configurations:
+This directory contains three nginx configurations:
 
 ## 📁 Files
 
-- **`nginx.conf`** - Production configuration (with HTTPS, strict rate limits)
-- **`nginx.dev.conf`** - Development configuration (without HTTPS, relaxed rate limits)
+- **`nginx.http.conf`** - Production configuration **without HTTPS**. This is what `docker-compose.yml` uses by default: a first test works without certificates. Also right when another proxy in front terminates TLS.
+- **`nginx.conf`** - Production configuration **with HTTPS** and a redirect from port 80. Needs `nginx/ssl/nginx.crt` and `nginx/ssl/nginx.key`.
+- **`nginx.dev.conf`** - Development configuration (without HTTPS, relaxed rate limits, `host.docker.internal` instead of container names)
+
+Which production file is used is chosen by `NGINX_CONF` in `.env` (see `.env.example`). `nginx.http.conf` and `nginx.conf` must stay identical apart from the TLS parts; `tests/test_prod_setup.py` fails when their routes, limits or upstreams drift apart. Change both together.
+
+### What the production files guarantee
+
+- `/api/*` goes to the backend, everything else to the frontend.
+- `X-Forwarded-For` is **replaced** by the real client address (never appended to what the client sent). The backend trusts exactly this (`TRUSTED_PROXIES=1`) for rate limits and login lockouts.
+- `/metrics` and `/health/detailed` answer 404 from outside. Prometheus reads them directly from `backend:8001` inside the Docker network.
+- Upstream names (`backend`, `frontend`) are resolved when nginx starts. After recreating the backend container run `docker compose restart nginx`, otherwise nginx may keep the old address.
 
 ## 🚀 Local Testing
 
@@ -19,9 +29,8 @@ The easiest method is to use Next.js Rewrites. These are already configured in `
 
 **Start:**
 ```bash
-# Terminal 1: Start backend
-cd backend
-uvicorn main:app --reload --port 8001
+# Terminal 1: Start backend (from the project root, not from backend/)
+python -m uvicorn backend.main:app --reload --port 8001
 
 # Terminal 2: Start frontend
 cd frontend

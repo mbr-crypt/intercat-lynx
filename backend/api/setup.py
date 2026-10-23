@@ -71,15 +71,36 @@ def admin_exists(db: Session) -> bool:
 
 
 def ensure_token(db: Session) -> str:
-    """Setup token from the environment, or a generated one kept in the database."""
+    """
+    Setup token from the environment, or a generated one kept in the database.
+
+    The backend runs as several processes (replicas x uvicorn workers) and all
+    of them start at the same moment on a fresh installation. Each would
+    generate its own token and the last write would win, so the token printed
+    in one log would not match the stored one. The table key is unique, so
+    exactly one INSERT succeeds; the others roll back and read that winner.
+    """
     env_token = os.getenv("SETUP_TOKEN")
     if env_token:
         return env_token
     token = settings_service.get(db, TOKEN_KEY)
-    if not token:
-        token = secrets.token_urlsafe(32)
-        settings_service.set_value(db, TOKEN_KEY, token, secret=True)
-    return token
+    if token:
+        return token
+    candidate = secrets.token_urlsafe(32)
+    try:
+        db.add(
+            AppSetting(
+                key=TOKEN_KEY, value=crypto.encrypt_secret(candidate), is_secret=True
+            )
+        )
+        db.commit()
+        return candidate
+    except IntegrityError:
+        db.rollback()
+        winner = settings_service.get(db, TOKEN_KEY)
+        if not winner:
+            raise
+        return winner
 
 
 def announce_setup_token() -> None:

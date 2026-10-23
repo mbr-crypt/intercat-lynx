@@ -13,20 +13,23 @@ from jwt import PyJWTError
 
 logger = logging.getLogger(__name__)
 
-from ..security import passwords
+from ..security import passwords, secret_check
 
 # JWT settings
 SECRET_KEY = os.getenv("SECRET_KEY", "change-me-in-production-please-use-strong-secret")
-_DEFAULT_SECRET = "change-me-in-production-please-use-strong-secret"
-if SECRET_KEY == _DEFAULT_SECRET:
-    if os.getenv("ENVIRONMENT", "development").lower() == "production":
+_IS_PRODUCTION = os.getenv("ENVIRONMENT", "development").lower() == "production"
+_WEAKNESS = secret_check.weakness(SECRET_KEY)
+if _WEAKNESS:
+    if _IS_PRODUCTION:
         raise RuntimeError(
-            "SECRET_KEY is still the public default. Anyone could forge login "
-            "tokens. Set SECRET_KEY to a random value (see .env.example)."
+            f"SECRET_KEY {_WEAKNESS}. Anyone could forge login tokens. "
+            "Run ./scripts/init-env.sh or set a random value of at least 32 "
+            "characters (see .env.example)."
         )
     logger.critical(
-        "SECRET_KEY is the public default - tokens can be forged. "
-        "Never run like this outside local development."
+        "SECRET_KEY %s - tokens can be forged. "
+        "Never run like this outside local development.",
+        _WEAKNESS,
     )
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(

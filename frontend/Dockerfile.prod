@@ -5,8 +5,9 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-# Build argument for API URL
-ARG NEXT_PUBLIC_API_URL=https://open-threats.com
+# Address of the API for the browser. Empty = same address as the page (nginx
+# forwards /api to the backend). Only set it if the API lives somewhere else.
+ARG NEXT_PUBLIC_API_URL=
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
 # Copy package files

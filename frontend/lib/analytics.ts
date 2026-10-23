@@ -1,6 +1,7 @@
 "use client";
+import { apiBase } from "@/lib/config";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_URL = apiBase();
 
 // Generate a unique visitor ID and store it in localStorage
 function getVisitorId(): string {

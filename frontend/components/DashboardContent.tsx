@@ -1,5 +1,6 @@
 "use client";
 
+import { apiBase } from "@/lib/config";
 import { useState, useEffect, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -9,7 +10,7 @@ import Link from "next/link";
 import { TrendChart } from "@/components/TrendChart";
 import { formatDate, getSeverityBadgeColor, getSeverityAccentColor } from "@/lib/utils";
 
-const CLIENT_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001';
+const CLIENT_API_URL = apiBase();
 
 // In-memory cache with timestamps
 const cache = new Map<string, { data: any; timestamp: number }>();

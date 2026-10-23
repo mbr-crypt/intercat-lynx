@@ -68,151 +68,91 @@ OpenThreat makes threat intelligence accessible to everyone - from security prof
 
 ## 🚀 Quick Start
 
-> 💡 **Neu hier?** Siehe [QUICK_START.md](QUICK_START.md) für eine Schritt-für-Schritt Anleitung!
+> The path below is the one tested for installations: **Docker on Linux** (a server, a VM, or WSL2). You do not need Python or Node on the host, everything is built in containers. Step-by-step with troubleshooting: [QUICK_START.md](QUICK_START.md). Test plan for a fresh VM: [docs/PROD_TEST.md](docs/PROD_TEST.md).
 
-### Prerequisites
-- [Docker Desktop](https://www.docker.com/products/docker-desktop)
-- [Python 3.13+](https://www.python.org/downloads/)
-- [Node.js 18+](https://nodejs.org/)
+### Requirements
 
-### One-Command Start
+- Linux with [Docker Engine](https://docs.docker.com/engine/install/) 24+ and the Compose plugin (`docker compose version` must work)
+- `git` and `openssl`
+- 4 GB RAM and 10 GB free disk (the first build downloads a few hundred MB)
+- Internet access for the build and for the CVE import (NVD, CISA)
 
-**Windows:**
-```bash
-.\start.bat
-```
+### Install
 
-**Manual Setup:**
-
-1. **Clone the repository**
 ```bash
 git clone https://github.com/mbr-crypt/intercat-lynx.git
 cd intercat-lynx
+
+./scripts/init-env.sh              # creates .env with random secrets
+docker compose up -d --build       # first build takes several minutes
+docker compose ps                  # wait until "backend" shows (healthy)
 ```
 
-2. **Start infrastructure**
+`init-env.sh` detects the address of the machine and writes it to `.env` as `PUBLIC_URL`. If you open the site under another name, pass it: `./scripts/init-env.sh http://lynx.example.org`.
+
+Then open `PUBLIC_URL` in the browser. A fresh installation starts the **setup assistant**: it asks for the setup token (`grep SETUP_TOKEN .env`), creates the first administrator, offers two-factor login, mail settings and the first CVE import.
+
+### HTTPS
+
+The default is plain HTTP, which is fine for a first test. For anything beyond that:
+
+- **Own certificate:** put `nginx.crt` and `nginx.key` into `nginx/ssl/`, set `NGINX_CONF=./nginx/nginx.conf` in `.env`, and set `PUBLIC_URL` to the `https://` address.
+- **Quick self-signed test certificate:** `./scripts/init-env.sh https://your-host --https --force` (browsers will warn).
+- **Another proxy does TLS** (company proxy, Cloudflare): keep the HTTP configuration and read the `TRUSTED_PROXIES` notes in `.env.example`.
+
+### Everyday commands
+
 ```bash
-docker-compose up -d
+docker compose logs -f backend     # follow the API log
+docker compose ps                  # state and health of all services
+docker compose restart backend     # after editing .env: docker compose up -d
+docker compose down                # stop (data stays in volumes)
+docker compose down -v             # stop AND delete the database (start over)
+git pull && docker compose up -d --build   # update
 ```
 
-3. **Set up backend**
-```bash
-# Install dependencies
-pip install -r requirements.txt
+### Something does not start?
 
-# Create database tables
-alembic upgrade head
-
-# Or use the setup script (Windows)
-.\setup_database.bat
-
-# Populate database (choose one):
-# Option A: Recent CVEs only (fast, recommended for first run)
-python scripts/fetch_nvd_complete.py --recent --days 30
-
-# Option B: All CVEs (takes hours, run overnight)
-# python scripts/fetch_nvd_complete.py
-
-# Fetch CISA KEV data (exploited vulnerabilities)
-python scripts/fetch_cisa_kev.py
-
-# Start backend (IMPORTANT: from project root, not from backend/)
-python -m uvicorn backend.main:app --reload --port 8001
-
-# Or use the batch script (Windows)
-.\start_backend.bat
-```
-
-4. **Start frontend**
-```bash
-cd frontend
-npm install
-npm run dev
-
-# Or use the batch script (Windows)
-.\start_frontend.bat
-```
-
-5. **Verify the setup**
-```bash
-# Check stats (should show exploited vulnerabilities)
-curl "http://localhost:8001/api/v1/stats"
-
-# Check KEV status
-curl "http://localhost:8001/api/v1/data-sources/cisa-kev/status"
-```
-
-6. **Access the application**
-- 🌐 **Frontend**: http://localhost:3000
-- 📚 **API Docs**: http://localhost:8001/docs
-- 🔌 **API**: http://localhost:8001
+| Message or symptom | Cause and fix |
+|---|---|
+| `required variable SECRET_KEY is missing` | There is no `.env`. Run `./scripts/init-env.sh`. |
+| Backend exits with `SECRET_KEY ... is an example value` | `.env` was copied by hand and not filled in. Use `init-env.sh`, or set a random value of 32+ characters. |
+| `port is already allocated` | Port 80/443 is taken. Set `HTTP_PORT` / `HTTPS_PORT` in `.env`, and add the port to `PUBLIC_URL`. |
+| `backend` stays `starting`, then `unhealthy` | `docker compose logs backend`. The most common reason is a wrong database password after changing `.env` on an existing database: `docker compose down -v` to start fresh. |
+| nginx restarts, log says `cannot load certificate` | `NGINX_CONF` points to the HTTPS file but `nginx/ssl/` is empty. Use `nginx.http.conf` or create the certificate. |
+| Setup assistant asks for a token you do not have | `grep SETUP_TOKEN .env`. If it is empty: `docker compose logs backend \| grep -A3 "not set up"`. |
+| Forgot the administrator password | See [QUICK_START.md](QUICK_START.md#forgot-the-administrator-password). |
 
 ## 📥 Populating the Database
 
-After setup, you need to fetch vulnerability data. You have **3 options**:
-
-### Option 1: API Endpoints (Recommended)
-
-Use the Swagger UI at `http://localhost:8001/docs`:
-
-1. Go to `/api/v1/data-sources/nvd/fetch-recent`
-2. Set `days=30` (fetches last 30 days)
-3. Click "Execute"
-4. Wait 5-30 minutes
-
-Or use curl:
-```bash
-# Fetch recent CVEs (fast)
-curl -X POST "http://localhost:8001/api/v1/data-sources/nvd/fetch-recent?days=30"
-```
-
-**Note:** CISA KEV data should already be populated during initial setup. If not, run:
-```bash
-python scripts/fetch_cisa_kev.py
-```
-
-### Option 2: CLI Script
+The setup assistant offers the first import. You can also run it by hand at any time; the CVE data comes from the NVD and CISA KEV:
 
 ```bash
-# Recent CVEs only (recommended)
-python scripts/fetch_nvd_complete.py --recent --days 30
-
-# All CVEs (300,000+, takes hours!)
-python scripts/fetch_nvd_complete.py
-
-# With API key (5x faster)
-export NVD_API_KEY=your_key_here
-python scripts/fetch_nvd_complete.py --recent --days 30
-```
-
-### Option 3: Docker Exec (for Production)
-
-If running in Docker:
-```bash
-# Execute script inside backend container
+# Recent CVEs only (fast, recommended for the first run)
 docker compose exec backend python scripts/fetch_nvd_complete.py --recent --days 30
+
+# CISA KEV (actively exploited vulnerabilities)
+docker compose exec backend python scripts/fetch_cisa_kev.py
+
+# Everything (300,000+ CVEs, takes hours)
+docker compose exec backend python scripts/fetch_nvd_complete.py
 ```
 
-### Get NVD API Key (Optional but Recommended)
+After that the scheduler (`celery-beat`) keeps the data current.
 
-- **Without key**: 10 requests/min → ~10-15 hours for all CVEs
-- **With key**: 50 requests/min → ~2-3 hours for all CVEs
+### NVD API key (optional but recommended)
 
-Get a free key at: https://nvd.nist.gov/developers/request-an-api-key
+- **Without key:** about 10 requests per minute, the full import takes 10-15 hours
+- **With key:** about 50 requests per minute, 2-3 hours
 
-Add to `.env`:
-```bash
-NVD_API_KEY=your_api_key_here
-```
+Get a free key at https://nvd.nist.gov/developers/request-an-api-key, put it into `.env` as `NVD_API_KEY=...` (or enter it in the setup assistant) and run `docker compose up -d`.
 
-### Check Database Status
+### Check the database
 
 ```bash
-# Via API
-curl "http://localhost:8001/api/v1/stats/overview"
-
-# Via API (detailed)
-curl "http://localhost:8001/api/v1/data-sources/list"
+curl http://localhost/api/v1/stats           # numbers shown on the dashboard
+curl http://localhost/health                 # API and database reachable
+docker compose exec postgres psql -U openthreat -c "select count(*) from vulnerabilities;"
 ```
 
 ## 📊 Data Sources
@@ -223,7 +163,7 @@ We aggregate data from trusted public sources:
 |--------|-------------|------------------|
 | [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) | Known Exploited Vulnerabilities | Daily |
 | [NVD](https://nvd.nist.gov/) | National Vulnerability Database | Every 2 hours |
-| [BSI CERT-Bund](https://wid.cert-bund.de/) | German Security Advisories | Daily |  
+| BSI CERT-Bund | German Security Advisories | planned, see [docs/BSI_INTEGRATION.md](docs/BSI_INTEGRATION.md) |
 
 ## 🏗️ Architecture
 
@@ -256,39 +196,30 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed architecture docum
 
 ## 🔧 Local Development
 
-### API Routing (Development vs Production)
-
-The frontend uses relative API paths (e.g., `/api/v1/auth/register`). These work differently depending on the environment:
-
-**Development (local):**
-- Next.js Rewrites automatically forward API requests to `http://127.0.0.1:8001`
-- Configured in `frontend/next.config.js`
-- No additional configuration needed
-
-**Production:**
-- Nginx routes all requests (Frontend + Backend)
-- Configured in `nginx/nginx.conf`
-
-### Local Testing with Nginx (Optional)
-
-If you want to replicate the production environment locally:
+For working on the code, only the database and Redis run in Docker; backend and frontend run on your machine. Details and troubleshooting: [DEVELOPMENT_SETUP.md](DEVELOPMENT_SETUP.md).
 
 ```bash
-# Use the development nginx configuration
-docker run -d \
-  --name openthreat-nginx \
-  -p 80:80 \
-  -v $(pwd)/nginx/nginx.dev.conf:/etc/nginx/nginx.conf:ro \
-  --add-host host.docker.internal:host-gateway \
-  nginx:alpine
+docker compose -f docker-compose.dev.yml up -d      # PostgreSQL + Redis
+pip install -r requirements.txt
+alembic upgrade head
+python -m uvicorn backend.main:app --reload --port 8001   # from the project root
+cd frontend && npm install && npm run dev                  # http://localhost:3000
 ```
+
+### API routing (development vs. Docker)
+
+The frontend always uses relative API paths (e.g. `/api/v1/auth/login`). Who forwards them depends on the setup:
+
+- **Development:** Next.js rewrites forward `/api` to `http://127.0.0.1:8001` (`frontend/next.config.js`).
+- **Docker:** nginx routes everything: `/api` to the backend, the rest to the frontend (`nginx/nginx.http.conf` or `nginx/nginx.conf`).
 
 See [nginx/README.md](nginx/README.md) for details.
 
 ## **Documentation**
 
 ### Getting Started
-- [Quick Start Guide](QUICK_START.md) - 5-Minute Setup
+- [Quick Start Guide](QUICK_START.md) - Docker installation step by step
+- [Test plan for a fresh VM](docs/PROD_TEST.md) - what to check after installing
 - [Development Setup](DEVELOPMENT_SETUP.md) - Local Development & Troubleshooting
 - [Nginx Configuration](nginx/README.md) - Routing & Reverse Proxy
 
