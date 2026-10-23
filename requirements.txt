@@ -1,16 +1,16 @@
 # Core dependencies
-bleach==6.3.0
+bleach==6.4.0
 annotated-types==0.7.0
-certifi==2025.8.3
+certifi==2026.10.23
 charset-normalizer==3.4.3
 common==0.1.2
-idna==3.10
+idna==3.20
 pydantic==2.11.9
 pydantic_core==2.33.2
-requests==2.32.5
-typing-inspection==0.4.1
+requests==2.34.2
+typing-inspection==0.4.4
 typing_extensions==4.15.0
-urllib3==2.6.3
+urllib3==2.8.0
 
 # Database
 sqlalchemy==2.0.36
@@ -18,7 +18,8 @@ psycopg2-binary==2.9.10
 alembic==1.14.0
 
 # API Framework
-fastapi==0.115.6
+fastapi==0.161.1
+starlette==1.9.0  # pinned on purpose: older versions have known vulnerabilities
 uvicorn[standard]==0.34.0
 
 # Security
@@ -27,8 +28,8 @@ itsdangerous==2.2.0
 
 # Authentication
 passlib[bcrypt]==1.7.4
-python-jose[cryptography]==3.5.0
-python-multipart==0.0.22
+pyjwt==2.15.1
+python-multipart==0.0.32
 bcrypt==4.1.2  # only to verify legacy hashes
 argon2-cffi==25.1.0
 cryptography==50.0.2
@@ -40,7 +41,7 @@ celery==5.4.0
 redis==5.2.1
 
 # Utilities
-python-dotenv==1.0.1
+python-dotenv==1.2.4
 python-dateutil==2.9.0
 
 # LLM Integration
