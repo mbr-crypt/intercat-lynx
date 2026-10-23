@@ -343,3 +343,122 @@ def test_init_env_https_creates_certificate(project_copy):
     assert _read_env(project_copy)["NGINX_CONF"] == "./nginx/nginx.conf"
     assert (project_copy / "nginx" / "ssl" / "nginx.crt").exists()
     assert (project_copy / "nginx" / "ssl" / "nginx.key").stat().st_mode & 0o077 == 0
+
+
+# --------------------------------------------------------------------------
+# nginx must not hand one user's answer to another (found in the Docker test)
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("path", [NGINX_HTTPS, NGINX_HTTP])
+def test_nginx_caches_only_public_locations_and_never_with_credentials(path):
+    locs = _locations(path)
+    cached = {name: body for name, body in locs.items() if "proxy_cache api_cache" in body}
+    # exactly the public, read-only locations
+    assert set(cached) == {
+        "location /api/v1/vulnerabilities",
+        "location /api/v1/search",
+        "location /api/v1/stats",
+    }
+    for name, body in cached.items():
+        assert "proxy_cache_bypass $skip_cache" in body, name
+        assert "proxy_no_cache $skip_cache" in body, name
+    # everything personal (auth, watchlist, setup, admin, zabbix) is not cached
+    assert "proxy_cache " not in locs["location /api/"]
+    code = re.sub(r"#.*", "", path.read_text())
+    for header in ("http_authorization", "http_x_setup_token", "http_x_api_key", "http_cookie"):
+        assert header in code.split("$skip_cache")[0].split("map ")[-1]
+
+
+@pytest.mark.skipif(not shutil.which("nginx"), reason="nginx binary not available")
+@pytest.mark.parametrize("path", [NGINX_HTTPS, NGINX_HTTP])
+def test_nginx_does_not_leak_responses_between_users(path, tmp_path):
+    """Real nginx in front of a counting stub: A and B must each get their own answer."""
+    import http.server
+    import json
+    import socket
+    import threading
+    import time
+    import urllib.request
+
+    def free_port():
+        with socket.socket() as s:
+            s.bind(("127.0.0.1", 0))
+            return s.getsockname()[1]
+
+    calls = {"n": 0}
+
+    class Stub(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            calls["n"] += 1
+            body = json.dumps(
+                {"call": calls["n"], "who": self.headers.get("Authorization")}
+            ).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    stub_port, web_port = free_port(), free_port()
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", stub_port), Stub)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+
+    conf = path.read_text()
+    # workers write the cache into tmp_path: run them as the current user
+    conf = re.sub(r"(?m)^user nginx;", "user root;" if os.geteuid() == 0 else "", conf)
+    conf = conf.replace("/var/run/nginx.pid", str(tmp_path / "nginx.pid"))
+    conf = conf.replace("/var/log/nginx/", str(tmp_path) + "/")
+    conf = conf.replace("/var/cache/nginx", str(tmp_path / "cache"))
+    conf = conf.replace("backend:8001", f"127.0.0.1:{stub_port}")
+    conf = conf.replace("frontend:3000", f"127.0.0.1:{stub_port}")
+    if "listen 443" in conf:  # HTTPS variant: serve the application server over plain HTTP
+        conf = conf.replace("listen 443 ssl http2;", f"listen {web_port};")
+        conf = re.sub(r"(?m)^\s*ssl_\w+ .*;$", "", conf)
+        conf = conf.replace("listen 80;", f"listen {free_port()};")
+    else:
+        conf = conf.replace("listen 80;", f"listen {web_port};")
+    (tmp_path / "cache").mkdir()
+    cfg = tmp_path / "nginx.conf"
+    cfg.write_text(conf)
+
+    check = subprocess.run(["nginx", "-t", "-c", str(cfg)], capture_output=True, text=True)
+    assert check.returncode == 0, check.stderr
+    subprocess.run(["nginx", "-c", str(cfg)], check=True)
+    try:
+        base = f"http://127.0.0.1:{web_port}"
+
+        def get(url, **headers):
+            req = urllib.request.Request(base + url, headers=headers)
+            with urllib.request.urlopen(req, timeout=5) as r:
+                return json.loads(r.read()), r.headers.get("X-Cache-Status")
+
+        for _ in range(50):  # wait until nginx accepts connections
+            try:
+                get("/health")
+                break
+            except Exception:
+                time.sleep(0.1)
+
+        alice, _ = get("/api/v1/auth/me", Authorization="Bearer ALICE")
+        bob, _ = get("/api/v1/auth/me", Authorization="Bearer BOB")
+        assert alice["who"] == "Bearer ALICE" and bob["who"] == "Bearer BOB"
+        assert alice["call"] != bob["call"]
+
+        # personal path without credentials is not cached either
+        first, _ = get("/api/v1/setup/status")
+        second, _ = get("/api/v1/setup/status")
+        assert first["call"] != second["call"]
+
+        # public data is still cached for anonymous visitors, never for logged-in ones
+        one, status_one = get("/api/v1/stats")
+        two, status_two = get("/api/v1/stats")
+        assert one["call"] == two["call"] and status_two == "HIT"
+        _, with_auth = get("/api/v1/stats", Authorization="Bearer ALICE")
+        assert with_auth == "BYPASS"
+    finally:
+        subprocess.run(["nginx", "-c", str(cfg), "-s", "stop"], capture_output=True)
+        server.shutdown()
