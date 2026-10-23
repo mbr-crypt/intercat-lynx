@@ -45,6 +45,9 @@ services:
       - ENVIRONMENT=${ENVIRONMENT:-production}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000}
       - OLLAMA_HOST=${OLLAMA_HOST:-}
+      # nginx is the only proxy in front of the backend; it sets X-Forwarded-For
+      # to the real client address. Do NOT publish port 8001 while this is on.
+      - TRUSTED_PROXIES=${TRUSTED_PROXIES:-1}
       - SECRET_KEY=${SECRET_KEY}
       - CSRF_SECRET_KEY=${CSRF_SECRET_KEY}
       - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-60}

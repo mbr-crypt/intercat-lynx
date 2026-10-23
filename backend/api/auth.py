@@ -5,7 +5,7 @@ Authentication endpoints for user registration, login, and management.
 import logging
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -28,9 +28,10 @@ from ..schemas.email_verification import (
     EmailVerificationRequest,
     VerificationResponse,
 )
-from ..security import mfa, passwords
+from ..security import login_throttle, mfa, passwords
 from ..services import settings_service, user_service
 from ..services.email_service import email_service
+from ..utils.client_ip import get_client_ip
 from ..utils.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     create_access_token,
@@ -126,11 +127,21 @@ def _register_failure(user: User, db: Session) -> None:
     db.commit()
 
 
-def _raise_if_locked(user: User) -> None:
+def _is_known_address(user: User, ip: str) -> bool:
+    """The address of the user's last completed login."""
+    return bool(ip) and ip != "unknown" and user.last_login_ip == ip
+
+
+def _raise_if_locked(user: User, ip: str) -> None:
+    """
+    The lockout stops password guessing from strangers. It does NOT apply to
+    the address the user last logged in from: otherwise anyone who knows a
+    username could lock that person (or the administrator) out at will.
+    """
     locked = user.locked_until
     if locked is not None and locked.tzinfo is None:
         locked = locked.replace(tzinfo=timezone.utc)
-    if locked and locked > datetime.now(timezone.utc):
+    if locked and locked > datetime.now(timezone.utc) and not _is_known_address(user, ip):
         logger.warning(f"Login attempt on locked account: {user.username}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -155,9 +166,10 @@ def issue_access_token(user: User) -> dict:
     }
 
 
-def _complete_login(user: User, db: Session) -> dict:
+def _complete_login(user: User, db: Session, ip: str) -> dict:
     user.failed_login_attempts = 0
     user.locked_until = None
+    user.last_login_ip = ip[:45] if ip and ip != "unknown" else None
     user.last_login_at = datetime.now(timezone.utc)
     db.commit()
     logger.info(f"User logged in: {user.username}")
@@ -165,7 +177,7 @@ def _complete_login(user: User, db: Session) -> dict:
 
 
 @router.post("/login", response_model=LoginResponse)
-async def login(credentials: UserLogin, db: Session = Depends(get_db)):
+async def login(request: Request, credentials: UserLogin, db: Session = Depends(get_db)):
     """
     Login step 1: username and password.
 
@@ -178,11 +190,16 @@ async def login(credentials: UserLogin, db: Session = Depends(get_db)):
       accepted and upgraded to Argon2id on success)
     - Unknown users cost the same time as wrong passwords (no user enumeration
       through timing)
-    - Account lockout after 5 failed attempts (30 minutes)
+    - Account lockout after 5 failed attempts (30 minutes), except for the
+      address of the user's last login (so it cannot be used to lock someone out)
+    - At most 20 failed attempts per client address in 15 minutes
     """
+    ip = get_client_ip(request)
+    login_throttle.check(ip)
     user = db.query(User).filter(User.username == credentials.username).first()
 
     if not user:
+        login_throttle.record_failure(ip)
         passwords.burn_password_check(credentials.password)
         logger.warning("Login attempt with non-existent username")
         raise HTTPException(
@@ -190,10 +207,11 @@ async def login(credentials: UserLogin, db: Session = Depends(get_db)):
             detail="Incorrect username or password",
         )
 
-    _raise_if_locked(user)
+    _raise_if_locked(user, ip)
 
     if not verify_password(credentials.password, user.hashed_password):
         _register_failure(user, db)
+        login_throttle.record_failure(ip)
         logger.warning(f"Failed login attempt for user: {user.username}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -219,16 +237,20 @@ async def login(credentials: UserLogin, db: Session = Depends(get_db)):
         )
         return {"mfa_required": True, "mfa_token": mfa_token}
 
-    return _complete_login(user, db)
+    return _complete_login(user, db, ip)
 
 
 @router.post("/login/2fa", response_model=LoginResponse)
-async def login_second_factor(data: TwoFactorLogin, db: Session = Depends(get_db)):
+async def login_second_factor(
+    request: Request, data: TwoFactorLogin, db: Session = Depends(get_db)
+):
     """
     Login step 2: six-digit code from the authenticator app, or a one-time
     recovery code. Failed codes count towards the same lockout as passwords,
     so the 1-in-a-million guess cannot be brute-forced.
     """
+    ip = get_client_ip(request)
+    login_throttle.check(ip)
     invalid = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid or expired verification",
@@ -244,17 +266,18 @@ async def login_second_factor(data: TwoFactorLogin, db: Session = Depends(get_db
     if not user or not user.is_active or not user.totp_enabled:
         raise invalid
 
-    _raise_if_locked(user)
+    _raise_if_locked(user, ip)
 
     if not mfa.check_second_factor(user, data.code, db):
         _register_failure(user, db)
+        login_throttle.record_failure(ip)
         logger.warning(f"Failed 2FA attempt for user: {user.username}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid verification code",
         )
 
-    return _complete_login(user, db)
+    return _complete_login(user, db, ip)
 
 
 @router.get("/me", response_model=UserResponse)

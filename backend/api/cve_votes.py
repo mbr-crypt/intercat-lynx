@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import CVEVote, User, Vulnerability
-from ..utils.auth import get_current_active_user, get_optional_current_user
+from ..dependencies.auth import get_current_active_user, optional_user as get_optional_current_user
 
 logger = logging.getLogger(__name__)
 

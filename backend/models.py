@@ -69,6 +69,9 @@ class User(Base):
     # Security
     failed_login_attempts = Column(Integer, default=0, nullable=False)
     locked_until = Column(DateTime(timezone=True), nullable=True)
+    # Address of the last completed login. The lockout does not apply to it, so
+    # a stranger guessing passwords cannot lock the real user out.
+    last_login_ip = Column(String(45), nullable=True)
 
     # Sessions: every access token carries this number ("tv"). Counting it up
     # (password change, "sign out everywhere", demotion, deactivation) makes all

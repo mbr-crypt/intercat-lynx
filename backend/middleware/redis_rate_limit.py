@@ -12,6 +12,7 @@ from typing import Tuple
 import redis
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
+from ..utils.client_ip import get_client_ip
 
 logger = logging.getLogger(__name__)
 
@@ -130,30 +131,8 @@ class RedisRateLimiter:
             )
 
     def get_client_ip(self, request: Request) -> str:
-        """
-        Extract client IP from request.
-
-        Handles proxies (X-Forwarded-For, X-Real-IP).
-
-        Args:
-            request: FastAPI request
-
-        Returns:
-            Client IP address
-        """
-        # Check for forwarded IP (behind proxy/load balancer)
-        forwarded = request.headers.get("X-Forwarded-For")
-        if forwarded:
-            # X-Forwarded-For can contain multiple IPs, take the first one
-            return forwarded.split(",")[0].strip()
-
-        # Check for real IP (set by some proxies)
-        real_ip = request.headers.get("X-Real-IP")
-        if real_ip:
-            return real_ip
-
-        # Fall back to direct connection IP
-        return request.client.host if request.client else "unknown"
+        """Client address behind our proxy, see ``utils/client_ip.py`` for the rules."""
+        return get_client_ip(request)
 
     def is_whitelisted(self, ip: str) -> bool:
         """

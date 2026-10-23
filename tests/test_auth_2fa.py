@@ -115,10 +115,14 @@ def test_full_2fa_lifecycle(client, db_session):
 
 
 def test_2fa_attempts_count_towards_lockout(client, db_session):
-    make_user(db_session)
+    user = make_user(db_session)
     token = login(client).json()["access_token"]
     enable_2fa(client, db_session, token)
     mfa_token = login(client).json()["mfa_token"]
+    # The lockout does not apply to the address of the last login (so it cannot
+    # be used to lock the real user out); simulate a guess from elsewhere.
+    user.last_login_ip = None
+    db_session.commit()
     for _ in range(5):
         r = client.post("/api/v1/auth/login/2fa", json={"mfa_token": mfa_token, "code": "111111"})
         assert r.status_code == 401
