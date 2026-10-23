@@ -1,0 +1,403 @@
+zabbix_export:
+  version: '6.0'
+  date: '2026-10-23T12:00:00Z'
+  groups:
+    - uuid: 153e44051b914b67a3a21f07566bd865
+      name: Templates/Applications
+  templates:
+    - uuid: 7e70677e68bf49aaa08598d2f1f88994
+      template: 'InterCat Lynx by HTTP'
+      name: 'InterCat Lynx by HTTP'
+      description: |
+        CVEs for the products followed in InterCat Lynx (https://github.com/mbr-crypt/intercat-lynx).
+        Needs a read-only Lynx API token. Set the macros {$LYNX.URL} and {$LYNX.TOKEN} on the host.
+        Written by hand and not yet imported into a live Zabbix: check the import result.
+      groups:
+        - name: Templates/Applications
+      items:
+        - uuid: 5c6108db33f1420b9f40f21196619852
+          name: 'Lynx: summary (raw)'
+          type: HTTP_AGENT
+          key: lynx.summary
+          delay: '{$LYNX.INTERVAL}'
+          history: '0'
+          trends: '0'
+          value_type: TEXT
+          description: 'Counters for all followed products, as JSON. Source for the dependent items.'
+          url: '{$LYNX.URL}/api/v1/zabbix/summary'
+          headers:
+            - name: Authorization
+              value: 'Bearer {$LYNX.TOKEN}'
+          tags:
+            - tag: component
+              value: raw
+        - uuid: 066287fa3cda429f89b7ed1549758c13
+          name: 'Lynx: products (raw)'
+          type: HTTP_AGENT
+          key: lynx.products
+          delay: '{$LYNX.INTERVAL}'
+          history: '0'
+          trends: '0'
+          value_type: TEXT
+          description: 'Counters per followed product, as JSON. Source for the item prototypes.'
+          url: '{$LYNX.URL}/api/v1/zabbix/products'
+          headers:
+            - name: Authorization
+              value: 'Bearer {$LYNX.TOKEN}'
+          tags:
+            - tag: component
+              value: raw
+        - uuid: 4fb6a08daf9848d0a78f7f0166e949f0
+          name: 'Lynx: New CVEs (24h)'
+          type: DEPENDENT
+          key: lynx.new_24h
+          delay: '0'
+          history: 30d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.new_24h
+          master_item:
+            key: lynx.summary
+          tags:
+            - tag: component
+              value: cve
+        - uuid: 00047528237f4f8c846fdf59d29a911d
+          name: 'Lynx: Critical CVEs (24h)'
+          type: DEPENDENT
+          key: lynx.critical_24h
+          delay: '0'
+          history: 30d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.critical_24h
+          master_item:
+            key: lynx.summary
+          tags:
+            - tag: component
+              value: cve
+        - uuid: 1689b732c0744b4db41215ff3193948a
+          name: 'Lynx: High CVEs (24h)'
+          type: DEPENDENT
+          key: lynx.high_24h
+          delay: '0'
+          history: 30d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.high_24h
+          master_item:
+            key: lynx.summary
+          tags:
+            - tag: component
+              value: cve
+        - uuid: 28bc70838ff84afeb1cd9b703289b587
+          name: 'Lynx: Actively exploited CVEs (24h)'
+          type: DEPENDENT
+          key: lynx.exploited_24h
+          delay: '0'
+          history: 30d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.exploited_24h
+          master_item:
+            key: lynx.summary
+          tags:
+            - tag: component
+              value: cve
+        - uuid: 5767cd672a524d55bab36b81fc57fc1a
+          name: 'Lynx: New CVEs (7d)'
+          type: DEPENDENT
+          key: lynx.new_7d
+          delay: '0'
+          history: 30d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.new_7d
+          master_item:
+            key: lynx.summary
+          tags:
+            - tag: component
+              value: cve
+        - uuid: 1002ac6ecb61437b98b726a9e2d770a6
+          name: 'Lynx: Critical CVEs (7d)'
+          type: DEPENDENT
+          key: lynx.critical_7d
+          delay: '0'
+          history: 30d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.critical_7d
+          master_item:
+            key: lynx.summary
+          tags:
+            - tag: component
+              value: cve
+        - uuid: a6881be1b4ec4a40a307deeaf869343f
+          name: 'Lynx: High CVEs (7d)'
+          type: DEPENDENT
+          key: lynx.high_7d
+          delay: '0'
+          history: 30d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.high_7d
+          master_item:
+            key: lynx.summary
+          tags:
+            - tag: component
+              value: cve
+        - uuid: 3b0b410de9424a03a76869ab2869bcc1
+          name: 'Lynx: Actively exploited CVEs (7d)'
+          type: DEPENDENT
+          key: lynx.exploited_7d
+          delay: '0'
+          history: 30d
+          trends: 365d
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.exploited_7d
+          master_item:
+            key: lynx.summary
+          tags:
+            - tag: component
+              value: cve
+        - uuid: bb6fd8e4a3114501a91b1d9ec0eef412
+          name: 'Lynx: Highest CVSS score (7d)'
+          type: DEPENDENT
+          key: lynx.max_cvss_7d
+          delay: '0'
+          history: 30d
+          trends: 365d
+          value_type: FLOAT
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.max_cvss_7d
+          master_item:
+            key: lynx.summary
+          tags:
+            - tag: component
+              value: cve
+      discovery_rules:
+        - uuid: c35d66a9d3974cc9ae16358f05fc42ae
+          name: 'Lynx: followed products'
+          type: HTTP_AGENT
+          key: lynx.products.discovery
+          delay: 1h
+          url: '{$LYNX.URL}/api/v1/zabbix/discovery'
+          headers:
+            - name: Authorization
+              value: 'Bearer {$LYNX.TOKEN}'
+          item_prototypes:
+            - uuid: c147080483e242a1a5988a5e6f5dd220
+              name: 'Lynx {#LABEL}: New CVEs (24h)'
+              type: DEPENDENT
+              key: 'lynx.product.new_24h[{#KEY}]'
+              delay: '0'
+              history: 30d
+              trends: 365d
+              value_type: UNSIGNED
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.items[?(@.key=="{#KEY}")].new_24h.first()'
+              master_item:
+                key: lynx.products
+              tags:
+                - tag: product
+                  value: '{#LABEL}'
+            - uuid: 57bee98938df47449820f1c35d8f6ebf
+              name: 'Lynx {#LABEL}: Critical CVEs (24h)'
+              type: DEPENDENT
+              key: 'lynx.product.critical_24h[{#KEY}]'
+              delay: '0'
+              history: 30d
+              trends: 365d
+              value_type: UNSIGNED
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.items[?(@.key=="{#KEY}")].critical_24h.first()'
+              master_item:
+                key: lynx.products
+              tags:
+                - tag: product
+                  value: '{#LABEL}'
+            - uuid: 7faeaf7756b34d0d96adaaa7a46d5a5b
+              name: 'Lynx {#LABEL}: High CVEs (24h)'
+              type: DEPENDENT
+              key: 'lynx.product.high_24h[{#KEY}]'
+              delay: '0'
+              history: 30d
+              trends: 365d
+              value_type: UNSIGNED
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.items[?(@.key=="{#KEY}")].high_24h.first()'
+              master_item:
+                key: lynx.products
+              tags:
+                - tag: product
+                  value: '{#LABEL}'
+            - uuid: c658b07b1ad046729256512c82f8359b
+              name: 'Lynx {#LABEL}: Actively exploited CVEs (24h)'
+              type: DEPENDENT
+              key: 'lynx.product.exploited_24h[{#KEY}]'
+              delay: '0'
+              history: 30d
+              trends: 365d
+              value_type: UNSIGNED
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.items[?(@.key=="{#KEY}")].exploited_24h.first()'
+              master_item:
+                key: lynx.products
+              tags:
+                - tag: product
+                  value: '{#LABEL}'
+            - uuid: 90cb4a3aea9843dc9a93a729190ba3f3
+              name: 'Lynx {#LABEL}: New CVEs (7d)'
+              type: DEPENDENT
+              key: 'lynx.product.new_7d[{#KEY}]'
+              delay: '0'
+              history: 30d
+              trends: 365d
+              value_type: UNSIGNED
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.items[?(@.key=="{#KEY}")].new_7d.first()'
+              master_item:
+                key: lynx.products
+              tags:
+                - tag: product
+                  value: '{#LABEL}'
+            - uuid: fef5f174fa9844fa99ba6804be545598
+              name: 'Lynx {#LABEL}: Critical CVEs (7d)'
+              type: DEPENDENT
+              key: 'lynx.product.critical_7d[{#KEY}]'
+              delay: '0'
+              history: 30d
+              trends: 365d
+              value_type: UNSIGNED
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.items[?(@.key=="{#KEY}")].critical_7d.first()'
+              master_item:
+                key: lynx.products
+              tags:
+                - tag: product
+                  value: '{#LABEL}'
+            - uuid: e6316542f6c34398a1318447a111c18b
+              name: 'Lynx {#LABEL}: High CVEs (7d)'
+              type: DEPENDENT
+              key: 'lynx.product.high_7d[{#KEY}]'
+              delay: '0'
+              history: 30d
+              trends: 365d
+              value_type: UNSIGNED
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.items[?(@.key=="{#KEY}")].high_7d.first()'
+              master_item:
+                key: lynx.products
+              tags:
+                - tag: product
+                  value: '{#LABEL}'
+            - uuid: 91940777184c4f7dadee66cdade01b62
+              name: 'Lynx {#LABEL}: Actively exploited CVEs (7d)'
+              type: DEPENDENT
+              key: 'lynx.product.exploited_7d[{#KEY}]'
+              delay: '0'
+              history: 30d
+              trends: 365d
+              value_type: UNSIGNED
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.items[?(@.key=="{#KEY}")].exploited_7d.first()'
+              master_item:
+                key: lynx.products
+              tags:
+                - tag: product
+                  value: '{#LABEL}'
+            - uuid: 7393a23f81684de6b828d676437dc9c6
+              name: 'Lynx {#LABEL}: Highest CVSS score (7d)'
+              type: DEPENDENT
+              key: 'lynx.product.max_cvss_7d[{#KEY}]'
+              delay: '0'
+              history: 30d
+              trends: 365d
+              value_type: FLOAT
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.items[?(@.key=="{#KEY}")].max_cvss_7d.first()'
+              master_item:
+                key: lynx.products
+              tags:
+                - tag: product
+                  value: '{#LABEL}'
+          trigger_prototypes:
+            - uuid: 5f90a105f806496aaba6bc7ec6f4f609
+              expression: 'last(/InterCat Lynx by HTTP/lynx.product.critical_24h[{#KEY}])>0'
+              name: 'Lynx {#LABEL}: new critical CVE in the last 24h'
+              priority: HIGH
+              description: 'A critical CVE for this product was published in the last 24 hours.'
+            - uuid: e4702d902da04939987c36941ccfa4b4
+              expression: 'last(/InterCat Lynx by HTTP/lynx.product.exploited_7d[{#KEY}])>0'
+              name: 'Lynx {#LABEL}: actively exploited CVE in the last 7 days'
+              priority: HIGH
+              description: 'A CVE for this product is on the CISA list of actively exploited vulnerabilities.'
+      triggers:
+        - uuid: 8b261f95c5344b47aa628f790679a054
+          expression: 'last(/InterCat Lynx by HTTP/lynx.critical_24h)>0'
+          name: 'Lynx: new critical CVE for followed products'
+          priority: AVERAGE
+          description: 'At least one critical CVE for a followed product was published in the last 24 hours.'
+        - uuid: 8e173dcbd0dc4df290a7b845d17b2e46
+          expression: 'last(/InterCat Lynx by HTTP/lynx.exploited_24h)>0'
+          name: 'Lynx: actively exploited CVE for followed products'
+          priority: HIGH
+          description: 'At least one CVE for a followed product is actively exploited and was published in the last 24 hours.'
+        - uuid: 5cc6e56fb0e944aa973f0f53dc2be4db
+          expression: 'nodata(/InterCat Lynx by HTTP/lynx.summary,30m)=1'
+          name: 'Lynx: no data for 30 minutes'
+          priority: WARNING
+          description: 'Lynx did not answer. Check the URL, the token and whether Lynx is running.'
+      macros:
+        - macro: '{$LYNX.INTERVAL}'
+          value: 5m
+          description: How often Zabbix asks Lynx.
+        - macro: '{$LYNX.TOKEN}'
+          type: SECRET_TEXT
+          description: Read-only Lynx API token (starts with lynx_).
+        - macro: '{$LYNX.URL}'
+          value: 'https://lynx.example.org'
+          description: Base address of Lynx, without a trailing slash.
