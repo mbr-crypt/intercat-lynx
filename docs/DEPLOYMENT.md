@@ -1,5 +1,7 @@
 # 🚀 Production Deployment Guide
 
+> **Installing?** Use [QUICK_START.md](../QUICK_START.md). It describes the tested path (`./scripts/init-env.sh`, `docker compose up -d --build`). This page is background material from the original project about protecting a public instance against abuse (rate limits, caching, DDoS); its configuration examples may differ from the files in this repository. When in doubt, `docker-compose.yml` and `nginx/` are authoritative.
+
 ## 🎯 Deployment-Strategie gegen Missbrauch
 
 ### Problem: API-Missbrauch & Hohe Kosten

@@ -1,5 +1,6 @@
 "use client";
 
+import { apiBase } from "@/lib/config";
 import { useEffect, useState } from "react";
 import {
   BarChart3,
@@ -21,7 +22,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_URL = apiBase();
 
 interface AnalyticsData {
   total_views: number;

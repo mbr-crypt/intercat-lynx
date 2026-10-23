@@ -1,5 +1,6 @@
 "use client";
 
+import { apiBase } from "@/lib/config";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useDropzone } from "react-dropzone";
 import Link from "next/link";
@@ -32,7 +33,7 @@ import {
   importStacksFromFile,
 } from "@/lib/stacks-storage";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
+const API_URL = apiBase();
 
 const ECOSYSTEMS = ["npm", "pypi", "rubygems", "packagist", "maven", "go", "cargo"];
 

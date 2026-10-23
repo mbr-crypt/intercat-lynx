@@ -1,5 +1,6 @@
 "use client";
 
+import { apiBase } from "@/lib/config";
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,7 +19,7 @@ import {
   Filter
 } from "lucide-react";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001';
+const API_URL = apiBase();
 
 interface NewsSource {
   id: number;

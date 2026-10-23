@@ -1,136 +1,56 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# InterCat Lynx - update an installed stack to the newest version.
+#
+#   ./deploy.sh              pull, rebuild, restart
+#   ./deploy.sh --no-cache   same, but rebuild the images from scratch
+#
+# First installation: see QUICK_START.md (./scripts/init-env.sh, then
+# docker compose up -d --build). This script does not create the .env.
+# The database schema is upgraded by the backend itself when it starts.
+set -euo pipefail
 
-# OpenThreat Production Deployment Script
-# Usage: ./deploy.sh
+cd "$(dirname "$0")"
 
-set -e
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
+ok()   { echo -e "${GREEN}✓${NC} $*"; }
+fail() { echo -e "${RED}✗ $*${NC}" >&2; exit 1; }
 
-echo "🚀 OpenThreat Production Deployment"
-echo "===================================="
+BUILD_ARGS=()
+[ "${1:-}" = "--no-cache" ] && BUILD_ARGS+=(--no-cache)
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+[ -f .env ] || fail ".env not found. Run ./scripts/init-env.sh first (see QUICK_START.md)."
+docker compose version >/dev/null 2>&1 || fail "The Docker Compose plugin is missing (docker compose version)."
 
-# Check if .env exists
-if [ ! -f .env ]; then
-    echo -e "${RED}❌ Error: .env file not found${NC}"
-    echo "Please create .env file from .env.example"
+# Compose checks that the required values (SECRET_KEY, POSTGRES_PASSWORD) are set.
+# .env is not sourced here: values with special characters would break the shell.
+docker compose config -q || fail "docker-compose.yml or .env is invalid (see message above)."
+ok "Configuration is valid"
+
+echo "📥 Getting the newest code..."
+git pull --ff-only
+
+echo "🔨 Building images..."
+docker compose build "${BUILD_ARGS[@]}"
+
+echo "🚀 Starting (waits until the services are healthy)..."
+docker compose up -d --wait --wait-timeout 300 || {
+    echo -e "${RED}A service did not become healthy:${NC}" >&2
+    docker compose ps >&2
+    docker compose logs --tail=40 backend >&2
     exit 1
-fi
+}
+ok "All services are up"
 
-# Load environment variables
-source .env
-
-# Check required variables
-required_vars=("DATABASE_URL" "POSTGRES_PASSWORD")
-for var in "${required_vars[@]}"; do
-    if [ -z "${!var}" ]; then
-        echo -e "${RED}❌ Error: $var is not set in .env${NC}"
-        exit 1
-    fi
-done
-
-echo -e "${GREEN}✓${NC} Environment variables loaded"
-
-# Pull latest code
-echo ""
-echo "📥 Pulling latest code..."
-git pull origin main
-
-# Build images
-echo ""
-echo "🔨 Building Docker images..."
-docker compose build --no-cache backend frontend celery-worker celery-beat
-
-# Stop old containers
-echo ""
-echo "🛑 Stopping old containers..."
-docker compose down
-
-# Start database and wait
-echo ""
-echo "🗄️  Starting database..."
-docker compose up -d postgres redis
-sleep 10
-
-# Run migrations
-echo ""
-echo "📊 Running database migrations..."
-docker compose run --rm backend alembic upgrade head
-
-# Start all services
-echo ""
-echo "🚀 Starting all services..."
-docker compose up -d
-
-# Wait for Celery to be ready and trigger initial news fetch
-echo ""
-echo "📰 Triggering initial news fetch..."
-sleep 5
-docker compose exec -T celery-worker python -c "from backend.tasks.news_tasks import fetch_news_articles_task; fetch_news_articles_task.delay()" || echo -e "${YELLOW}⚠️ News fetch trigger failed - will run on schedule${NC}"
-
-# Wait for services to be healthy
-echo ""
-echo "⏳ Waiting for services to be healthy..."
-sleep 15
-
-# Health check
-echo ""
-echo "🏥 Running health checks..."
-if curl -f http://localhost/health > /dev/null 2>&1; then
-    echo -e "${GREEN}✓${NC} Backend is healthy"
+HTTP_PORT="$(grep -E '^HTTP_PORT=' .env | tail -n1 | cut -d= -f2- | tr -d '[:space:]')"
+HTTP_PORT="${HTTP_PORT:-80}"
+if curl -fsS "http://localhost:${HTTP_PORT}/health" >/dev/null 2>&1; then
+    ok "API answers through nginx"
 else
-    echo -e "${RED}❌ Backend health check failed${NC}"
-    docker compose logs backend
-    exit 1
+    # With the HTTPS configuration port 80 only redirects, but /health stays plain
+    echo -e "${YELLOW}⚠ http://localhost:${HTTP_PORT}/health did not answer. Check: docker compose logs nginx${NC}"
 fi
 
-if curl -f http://localhost > /dev/null 2>&1; then
-    echo -e "${GREEN}✓${NC} Frontend is healthy"
-else
-    echo -e "${RED}❌ Frontend health check failed${NC}"
-    docker compose logs frontend
-    exit 1
-fi
-
-# Check Celery services
-if docker compose ps celery-worker | grep -q "Up"; then
-    echo -e "${GREEN}✓${NC} Celery worker is running"
-else
-    echo -e "${YELLOW}⚠️ Celery worker may not be running${NC}"
-fi
-
-if docker compose ps celery-beat | grep -q "Up"; then
-    echo -e "${GREEN}✓${NC} Celery beat scheduler is running"
-else
-    echo -e "${YELLOW}⚠️ Celery beat scheduler may not be running${NC}"
-fi
-
-# Show status
-echo ""
-echo "📊 Container Status:"
+echo
 docker compose ps
-
-# Show logs
-echo ""
-echo "📝 Recent logs:"
-docker compose logs --tail=20
-
-echo ""
-echo -e "${GREEN}✅ Deployment successful!${NC}"
-echo ""
-echo "🌐 Application URLs:"
-echo "   Frontend: http://localhost"
-echo "   API:      http://localhost/api/v1"
-echo "   Docs:     http://localhost/api/v1/docs"
-echo "   Health:   http://localhost/health"
-echo ""
-echo "📊 Monitoring:"
-echo "   docker compose logs -f"
-echo "   docker compose ps"
-echo ""
-echo "🛑 To stop:"
-echo "   docker compose down"
+echo
+echo "Logs: docker compose logs -f backend      Stop: docker compose down"

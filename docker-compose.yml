@@ -1,20 +1,31 @@
+# InterCat Lynx - production-like stack (nginx, frontend, backend, worker, database).
+#
+# Start:   ./scripts/init-env.sh      (once: creates .env with random secrets)
+#          docker compose up -d --build
+# Then:    open the address of this server in the browser. The setup assistant asks
+#          for the setup token, which is stored in .env (SETUP_TOKEN).
+#
+# For development (only database and Redis in Docker) use docker-compose.dev.yml.
+
 # Settings every backend process needs. The API server AND the Celery worker use
 # them: the worker sends the e-mails and webhooks and has to decrypt the stored
 # SMTP password and webhook secrets (that needs SECRET_KEY). A worker without
 # these variables silently cannot deliver notifications.
 x-backend-env: &backend-env
-  DATABASE_URL: postgresql://${POSTGRES_USER:-openthreat}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-openthreat}
+  DATABASE_URL: postgresql://${POSTGRES_USER:-openthreat}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is missing - run ./scripts/init-env.sh or copy .env.example to .env}@postgres:5432/${POSTGRES_DB:-openthreat}
   REDIS_URL: redis://redis:6379
   LOG_LEVEL: ${LOG_LEVEL:-INFO}
   ENVIRONMENT: ${ENVIRONMENT:-production}
-  SECRET_KEY: ${SECRET_KEY}
+  SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is missing - run ./scripts/init-env.sh or copy .env.example to .env}
   ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
   PUBLIC_URL: ${PUBLIC_URL:-}
   WEBHOOK_ALLOW_PRIVATE_NETWORKS: ${WEBHOOK_ALLOW_PRIVATE_NETWORKS:-false}
+  NVD_API_KEY: ${NVD_API_KEY:-}
   OLLAMA_HOST: ${OLLAMA_HOST:-}
   LLM_MODEL: ${LLM_MODEL:-}
   SMTP_ENABLED: ${SMTP_ENABLED:-false}
-  SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+  SMTP_HOST: ${SMTP_HOST:-}
+  SMTP_SECURITY: ${SMTP_SECURITY:-starttls}
   SMTP_PORT: ${SMTP_PORT:-587}
   SMTP_USERNAME: ${SMTP_USERNAME:-}
   SMTP_PASSWORD: ${SMTP_PASSWORD:-}
@@ -25,15 +36,18 @@ services:
   nginx:
     image: nginx:alpine
     ports:
-      - "80:80"
-      - "443:443"
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/cache:/var/cache/nginx
+      # nginx.http.conf = without HTTPS (first test, TLS done by another proxy)
+      # nginx.conf      = with HTTPS, needs nginx/ssl/nginx.crt and nginx.key
+      - ${NGINX_CONF:-./nginx/nginx.http.conf}:/etc/nginx/nginx.conf:ro
       - ./nginx/ssl:/etc/nginx/ssl:ro
     depends_on:
-      - frontend
-      - backend
+      frontend:
+        condition: service_started
+      backend:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - openthreat-network
@@ -43,10 +57,12 @@ services:
       context: ./frontend
       dockerfile: Dockerfile.prod
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://open-threats.com}
+        # Empty = the browser talks to the address it loaded the page from
+        # (nginx forwards /api). Only set it if the API lives somewhere else.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://open-threats.com}
+      # Server-side rendering reaches the backend inside the Docker network
       - API_URL=http://backend:8001
     restart: unless-stopped
     networks:
@@ -63,15 +79,22 @@ services:
       dockerfile: Dockerfile.prod
     environment:
       <<: *backend-env
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-${PUBLIC_URL:-http://localhost}}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-60}
+      RATE_LIMIT_PER_HOUR: ${RATE_LIMIT_PER_HOUR:-1000}
+      RATE_LIMIT_WHITELIST: ${RATE_LIMIT_WHITELIST:-}
       # nginx is the only proxy in front of the backend; it sets X-Forwarded-For
       # to the real client address. Do NOT publish port 8001 while this is on.
       TRUSTED_PROXIES: ${TRUSTED_PROXIES:-1}
-      CSRF_SECRET_KEY: ${CSRF_SECRET_KEY}
+      CSRF_SECRET_KEY: ${CSRF_SECRET_KEY:-}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-60}
+      # Setup assistant: the token asked for on first start (see .env)
+      SETUP_TOKEN: ${SETUP_TOKEN:-}
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
       # - ollama  # Uncomment if using Ollama for LLM features
     restart: unless-stopped
     networks:
@@ -81,18 +104,24 @@ services:
         limits:
           cpus: '1.0'
           memory: 1G
-      replicas: 2
+      replicas: ${BACKEND_REPLICAS:-2}
 
   postgres:
     image: postgres:16-alpine
     environment:
       - POSTGRES_DB=${POSTGRES_DB:-openthreat}
       - POSTGRES_USER=${POSTGRES_USER:-openthreat}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-    # SECURITY: Port NOT exposed to host - only accessible within Docker network
-    # To access DB for admin tasks, use: docker compose -f docker-compose.prod.yml exec postgres psql -U openthreat
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is missing - run ./scripts/init-env.sh or copy .env.example to .env}
+    # SECURITY: Port NOT exposed to host - only accessible within Docker network.
+    # For admin tasks: docker compose exec postgres psql -U openthreat
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-openthreat} -d ${POSTGRES_DB:-openthreat}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
     restart: unless-stopped
     networks:
       - openthreat-network
@@ -116,6 +145,11 @@ services:
     # SECURITY: Port NOT exposed to host - only accessible within Docker network
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     restart: unless-stopped
     networks:
       - openthreat-network
@@ -133,45 +167,44 @@ services:
     environment:
       <<: *backend-env
     depends_on:
-      - postgres
-      - redis
+      # the backend creates and upgrades the database schema when it starts
+      backend:
+        condition: service_healthy
       # - ollama  # Uncomment if using Ollama for LLM features
     restart: unless-stopped
     networks:
       - openthreat-network
     healthcheck:
-      test: ["CMD-SHELL", "celery -A backend.celery_app inspect ping | grep -q 'pong'"]
+      test: ["CMD-SHELL", "celery -A backend.celery_app inspect ping -d celery@$$HOSTNAME | grep -q pong"]
       interval: 30s
-      timeout: 10s
+      timeout: 15s
       retries: 3
-      start_period: 30s
+      start_period: 40s
     deploy:
       resources:
         limits:
           cpus: '2.0'
           memory: 1G
-      replicas: 2
+      replicas: ${WORKER_REPLICAS:-1}
 
+  # Exactly one scheduler, never scale this service
   celery-beat:
     build:
       context: .
       dockerfile: Dockerfile.prod
     command: celery -A backend.celery_app beat --loglevel=info
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-openthreat}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-openthreat}
-      - REDIS_URL=redis://redis:6379
+      <<: *backend-env
     depends_on:
-      - postgres
-      - redis
+      backend:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - openthreat-network
+    # The image check asks the API port, which does not exist in this container.
+    # A scheduler has no useful probe; "restart: unless-stopped" revives it.
     healthcheck:
-      test: ["CMD", "python", "-c", "print('ok')"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
+      disable: true
     deploy:
       resources:
         limits:
@@ -182,8 +215,6 @@ services:
   # Requires ~4GB RAM and ~2GB disk space for the image
   # ollama:
   #   image: ollama/ollama:latest
-  #   ports:
-  #     - "11434:11434"
   #   volumes:
   #     - ollama_data:/root/.ollama
   #   environment:
