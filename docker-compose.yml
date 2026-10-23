@@ -1,3 +1,26 @@
+# Settings every backend process needs. The API server AND the Celery worker use
+# them: the worker sends the e-mails and webhooks and has to decrypt the stored
+# SMTP password and webhook secrets (that needs SECRET_KEY). A worker without
+# these variables silently cannot deliver notifications.
+x-backend-env: &backend-env
+  DATABASE_URL: postgresql://${POSTGRES_USER:-openthreat}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-openthreat}
+  REDIS_URL: redis://redis:6379
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  ENVIRONMENT: ${ENVIRONMENT:-production}
+  SECRET_KEY: ${SECRET_KEY}
+  ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
+  PUBLIC_URL: ${PUBLIC_URL:-}
+  WEBHOOK_ALLOW_PRIVATE_NETWORKS: ${WEBHOOK_ALLOW_PRIVATE_NETWORKS:-false}
+  OLLAMA_HOST: ${OLLAMA_HOST:-}
+  LLM_MODEL: ${LLM_MODEL:-}
+  SMTP_ENABLED: ${SMTP_ENABLED:-false}
+  SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_USERNAME: ${SMTP_USERNAME:-}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+  SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-}
+  SMTP_FROM_NAME: ${SMTP_FROM_NAME:-InterCat Lynx}
+
 services:
   nginx:
     image: nginx:alpine
@@ -39,25 +62,13 @@ services:
       context: .
       dockerfile: Dockerfile.prod
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-openthreat}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-openthreat}
-      - REDIS_URL=redis://redis:6379
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - ENVIRONMENT=${ENVIRONMENT:-production}
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000}
-      - OLLAMA_HOST=${OLLAMA_HOST:-}
+      <<: *backend-env
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
       # nginx is the only proxy in front of the backend; it sets X-Forwarded-For
       # to the real client address. Do NOT publish port 8001 while this is on.
-      - TRUSTED_PROXIES=${TRUSTED_PROXIES:-1}
-      - SECRET_KEY=${SECRET_KEY}
-      - CSRF_SECRET_KEY=${CSRF_SECRET_KEY}
-      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-60}
-      - SMTP_ENABLED=${SMTP_ENABLED:-false}
-      - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
-      - SMTP_PORT=${SMTP_PORT:-587}
-      - SMTP_USERNAME=${SMTP_USERNAME}
-      - SMTP_PASSWORD=${SMTP_PASSWORD}
-      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL}
-      - SMTP_FROM_NAME=${SMTP_FROM_NAME:-OpenThreat}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-1}
+      CSRF_SECRET_KEY: ${CSRF_SECRET_KEY}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-60}
     depends_on:
       - postgres
       - redis
@@ -120,10 +131,7 @@ services:
       dockerfile: Dockerfile.prod
     command: celery -A backend.celery_app worker --loglevel=info --concurrency=1
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-openthreat}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-openthreat}
-      - REDIS_URL=redis://redis:6379
-      - OLLAMA_HOST=${OLLAMA_HOST:-}
-      - LLM_MODEL=${LLM_MODEL:-}
+      <<: *backend-env
     depends_on:
       - postgres
       - redis

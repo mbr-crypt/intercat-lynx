@@ -4,6 +4,12 @@ const nextConfig = {
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001',
   },
   reactStrictMode: true,
+
+  // The app does not use next/image. Turning the image optimizer off removes
+  // the /_next/image endpoint, which several Next.js 14 vulnerabilities
+  // (remote code execution via crafted SVG/AVIF files, denial of service,
+  // disk filling) are about.
+  images: { unoptimized: true },
   
   // API Rewrites for local development
   // In production, nginx handles the routing

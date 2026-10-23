@@ -2,11 +2,12 @@
 Site analytics endpoints for visitor statistics.
 """
 
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, Query, Request
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import Date, cast, func
 from sqlalchemy.orm import Session
 from user_agents import parse
@@ -17,12 +18,33 @@ from ..models import PageView
 router = APIRouter()
 
 
+_VISITOR_ID = re.compile(r"^[0-9a-fA-F-]{8,64}$")
+_COUNTRY_CODE = re.compile(r"^[A-Za-z]{2}$")
+
+
 class PageViewCreate(BaseModel):
     """Request model for tracking a page view."""
 
-    path: str
-    referrer: Optional[str] = None
-    visitor_id: Optional[str] = None
+    path: str = Field(..., min_length=1, max_length=2000)
+    referrer: Optional[str] = Field(None, max_length=4000)
+    visitor_id: Optional[str] = Field(None, max_length=100)
+
+    @field_validator("path")
+    @classmethod
+    def path_is_a_site_path(cls, v: str) -> str:
+        # The frontend sends location.pathname, which always starts with "/"
+        if not v.startswith("/"):
+            raise ValueError("path must start with /")
+        return v
+
+    @field_validator("visitor_id")
+    @classmethod
+    def visitor_id_is_a_random_id(cls, v: Optional[str]) -> Optional[str]:
+        # crypto.randomUUID() in the browser. Anything else is not stored,
+        # the page view itself still counts.
+        if v is not None and not _VISITOR_ID.match(v):
+            return None
+        return v
 
 
 class AnalyticsResponse(BaseModel):
@@ -84,10 +106,14 @@ async def track_page_view(
     browser, os = get_browser_and_os(user_agent_string)
 
     # Get country from headers (set by reverse proxy/CDN)
+    # These headers are only trustworthy behind a CDN that sets them; anyone
+    # else can send them too, so they are checked before they are stored.
     country = request.headers.get("cf-ipcountry") or request.headers.get(
         "x-country-code"
     )
-    city = request.headers.get("cf-ipcity")
+    if country and not _COUNTRY_CODE.match(country):
+        country = None
+    city = (request.headers.get("cf-ipcity") or "")[:100] or None
 
     # Create page view record
     db_page_view = PageView(
@@ -109,7 +135,7 @@ async def track_page_view(
 
 @router.get("/analytics/stats", response_model=AnalyticsResponse)
 async def get_analytics_stats(
-    days: int = 30,
+    days: int = Query(30, ge=1, le=365),
     db: Session = Depends(get_db),
 ):
     """

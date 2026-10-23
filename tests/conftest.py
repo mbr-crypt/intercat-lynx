@@ -56,12 +56,15 @@ def isolate_stats_cache(monkeypatch):
 @pytest.fixture(autouse=True)
 def isolate_login_throttle(monkeypatch):
     """Failed-login counters live in memory during tests and start empty."""
-    from backend.security import login_throttle
+    from backend.security import attempt_limit, login_throttle
 
     monkeypatch.setattr(login_throttle, "USE_REDIS", False)
+    monkeypatch.setattr(attempt_limit, "USE_REDIS", False)
     login_throttle.reset_memory()
+    attempt_limit.reset_all_memory()
     yield
     login_throttle.reset_memory()
+    attempt_limit.reset_all_memory()
 
 
 @pytest.fixture()

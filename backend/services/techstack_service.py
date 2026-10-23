@@ -455,6 +455,11 @@ class TechStackService:
         try:
             import xml.etree.ElementTree as ET
 
+            # A pom.xml never needs a DTD. Refusing it up front rules out
+            # entity-expansion tricks ("billion laughs") in uploaded files.
+            if "<!DOCTYPE" in content.upper() or "<!ENTITY" in content.upper():
+                raise ValueError("pom.xml must not contain a DOCTYPE or ENTITY declaration.")
+
             root = ET.fromstring(content)
 
             # Handle namespace

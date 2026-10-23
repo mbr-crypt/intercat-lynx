@@ -28,7 +28,7 @@ from ..schemas.email_verification import (
     EmailVerificationRequest,
     VerificationResponse,
 )
-from ..security import login_throttle, mfa, passwords
+from ..security import attempt_limit, login_throttle, mfa, passwords
 from ..services import settings_service, user_service
 from ..services.email_service import email_service
 from ..utils.client_ip import get_client_ip
@@ -421,7 +421,9 @@ async def delete_account(
 
 @router.post("/send-verification-code", response_model=VerificationResponse)
 async def send_verification_code(
-    request: EmailVerificationRequest, db: Session = Depends(get_db)
+    http_request: Request,
+    request: EmailVerificationRequest,
+    db: Session = Depends(get_db),
 ):
     """
     Send verification code to email for registration.
@@ -435,12 +437,21 @@ async def send_verification_code(
     - Email address
     - Expiry time (15 minutes)
     """
+    # Each call sends a mail to an address the caller names, so the number of
+    # mails per address and per client has to be limited.
+    ip = get_client_ip(http_request)
+    attempt_limit.code_sends_by_email.check(request.email)
+    attempt_limit.code_sends_by_ip.check(ip)
+
     # Check if email is already registered
     existing_user = db.query(User).filter(User.email == request.email).first()
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered"
         )
+
+    attempt_limit.code_sends_by_email.record(request.email)
+    attempt_limit.code_sends_by_ip.record(ip)
 
     # Generate verification code
     code = EmailVerification.generate_code()
@@ -474,7 +485,9 @@ async def send_verification_code(
 
 @router.post("/verify-email", response_model=dict)
 async def verify_email(
-    request: EmailVerificationConfirm, db: Session = Depends(get_db)
+    http_request: Request,
+    request: EmailVerificationConfirm,
+    db: Session = Depends(get_db),
 ):
     """
     Verify email with code (used during registration).
@@ -485,6 +498,10 @@ async def verify_email(
     - Success message
     - Verification token (to be used in registration)
     """
+    ip = get_client_ip(http_request)
+    attempt_limit.code_failures_by_email.check(request.email)
+    attempt_limit.code_failures_by_ip.check(ip)
+
     # Find verification code
     verification = (
         db.query(EmailVerification)
@@ -499,6 +516,8 @@ async def verify_email(
     )
 
     if not verification:
+        attempt_limit.code_failures_by_email.record(request.email)
+        attempt_limit.code_failures_by_ip.record(ip)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired verification code",
@@ -526,6 +545,7 @@ async def verify_email(
 
 @router.post("/request-email-change", response_model=VerificationResponse)
 async def request_email_change(
+    http_request: Request,
     request: EmailChangeRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -551,6 +571,12 @@ async def request_email_change(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Email already in use"
         )
+
+    ip = get_client_ip(http_request)
+    attempt_limit.code_sends_by_email.check(request.new_email)
+    attempt_limit.code_sends_by_ip.check(ip)
+    attempt_limit.code_sends_by_email.record(request.new_email)
+    attempt_limit.code_sends_by_ip.record(ip)
 
     # Generate verification code
     code = EmailVerification.generate_code()
@@ -586,6 +612,7 @@ async def request_email_change(
 
 @router.post("/confirm-email-change", response_model=dict)
 async def confirm_email_change(
+    http_request: Request,
     request: EmailChangeConfirm,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -599,6 +626,10 @@ async def confirm_email_change(
     - Success message
     - New email address
     """
+    ip = get_client_ip(http_request)
+    attempt_limit.code_failures_by_email.check(request.new_email)
+    attempt_limit.code_failures_by_ip.check(ip)
+
     # Find verification code
     verification = (
         db.query(EmailVerification)
@@ -614,6 +645,8 @@ async def confirm_email_change(
     )
 
     if not verification:
+        attempt_limit.code_failures_by_email.record(request.new_email)
+        attempt_limit.code_failures_by_ip.record(ip)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired verification code",
@@ -623,6 +656,17 @@ async def confirm_email_change(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Verification code has expired",
+        )
+
+    # Someone else may have taken the address since the code was sent
+    taken = (
+        db.query(User)
+        .filter(User.email == request.new_email, User.id != current_user.id)
+        .first()
+    )
+    if taken:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Email already in use"
         )
 
     # Update user email

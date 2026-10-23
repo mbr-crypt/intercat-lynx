@@ -3,16 +3,19 @@ Waitlist endpoints for beta launch signups with email verification.
 """
 
 import logging
+import os
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import WaitlistEntry
 from ..schemas.waitlist import WaitlistJoin, WaitlistResponse
+from ..security import attempt_limit
 from ..services.email_service import email_service
+from ..utils.client_ip import get_client_ip
 
 logger = logging.getLogger(__name__)
 
@@ -25,13 +28,22 @@ def generate_verification_token() -> str:
 
 
 @router.post("/join", status_code=status.HTTP_201_CREATED)
-async def join_waitlist(data: WaitlistJoin, db: Session = Depends(get_db)):
+async def join_waitlist(
+    request: Request, data: WaitlistJoin, db: Session = Depends(get_db)
+):
     """
     Join the waitlist - sends verification email with link.
 
     **Returns:**
     - Success message
     """
+    # Every call can send a mail to an address the caller names
+    ip = get_client_ip(request)
+    attempt_limit.code_sends_by_email.check(data.email)
+    attempt_limit.code_sends_by_ip.check(ip)
+    attempt_limit.code_sends_by_email.record(data.email)
+    attempt_limit.code_sends_by_ip.record(ip)
+
     # Check if email already exists
     existing_entry = (
         db.query(WaitlistEntry).filter(WaitlistEntry.email == data.email).first()
@@ -71,9 +83,17 @@ async def join_waitlist(data: WaitlistJoin, db: Session = Depends(get_db)):
 
     # Send verification email
     try:
-        verification_link = (
-            f"https://open-threats.com/auth/verify?token={verification_token}"
-        )
+        # The link must point to THIS installation. It used to be hard-coded to
+        # the domain of the original project, which would have sent the token
+        # of every signup to a third party.
+        public_url = os.getenv("PUBLIC_URL", "").rstrip("/")
+        if not public_url:
+            logger.error("PUBLIC_URL is not set: no waitlist verification mail sent")
+            return {
+                "message": "Signup saved, but this server cannot send mails yet.",
+                "already_verified": False,
+            }
+        verification_link = f"{public_url}/auth/verify?token={verification_token}"
 
         await email_service.send_email(
             to_email=data.email,

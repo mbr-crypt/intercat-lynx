@@ -19,7 +19,7 @@ from backend.tasks.llm_tasks import (
 router = APIRouter(prefix="/llm", tags=["LLM Processing"])
 
 
-@router.get("/stats")
+@router.get("/stats", dependencies=[Depends(require_role(UserRole.ANALYST))])
 async def get_processing_stats():
     """
     Get LLM processing statistics.
@@ -103,7 +103,7 @@ async def process_batch(batch_size: int = 10, priority: str = "high"):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/task/{task_id}")
+@router.get("/task/{task_id}", dependencies=[Depends(require_role(UserRole.ANALYST))])
 async def get_task_status(task_id: str):
     """
     Get status of a LLM processing task.

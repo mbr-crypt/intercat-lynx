@@ -36,6 +36,12 @@ curl http://localhost:8001/health
 
 Returns comprehensive system health information.
 
+This endpoint (and `/metrics`) is **internal only**: the nginx in front of the
+backend answers 404 for both, because they reveal system details. Call them from
+inside the Docker network, for example
+`docker compose exec backend curl -s http://localhost:8001/health/detailed`.
+Prometheus reads `/metrics` directly from `backend:8001`, not through nginx.
+
 ```bash
 curl http://localhost:8001/health/detailed
 ```
