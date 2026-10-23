@@ -53,6 +53,17 @@ def isolate_stats_cache(monkeypatch):
     monkeypatch.setattr(stats_module, "redis_client", _NoCache())
 
 
+@pytest.fixture(autouse=True)
+def isolate_login_throttle(monkeypatch):
+    """Failed-login counters live in memory during tests and start empty."""
+    from backend.security import login_throttle
+
+    monkeypatch.setattr(login_throttle, "USE_REDIS", False)
+    login_throttle.reset_memory()
+    yield
+    login_throttle.reset_memory()
+
+
 @pytest.fixture()
 def session_factory():
     """Session factory bound to the in-memory test database."""
