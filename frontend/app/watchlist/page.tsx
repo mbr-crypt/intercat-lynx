@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { getSeverityBadgeColor } from "@/lib/utils";
 import { formatDate } from "@/lib/admin-api";
 import { inputClass, secondaryButton, selectClass } from "@/components/admin/Modal";
+import { NotificationSettingsCard } from "@/components/NotificationSettingsCard";
 import {
   watchFetch,
   type CatalogResult,
@@ -296,6 +297,8 @@ export default function WatchlistPage() {
               )}
             </CardContent>
           </Card>
+
+          <NotificationSettingsCard token={token} />
         </div>
 
         <Card>

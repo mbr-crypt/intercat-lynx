@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { Notification, NotificationListResponse } from "@/types/notification";
 import { formatDistanceToNow } from "date-fns";
-import { Bell, Check, CheckCheck, MessageSquare, ThumbsUp, AtSign, X } from "lucide-react";
+import { Bell, Check, CheckCheck, MessageSquare, ShieldAlert, ThumbsUp, AtSign, X } from "lucide-react";
 import Link from "next/link";
 
 export function NotificationCenter() {
@@ -135,6 +135,8 @@ export function NotificationCenter() {
         return <AtSign className="w-4 h-4 text-blue-600" />;
       case "reply":
         return <MessageSquare className="w-4 h-4 text-green-600" />;
+      case "product_cve":
+        return <ShieldAlert className="w-4 h-4 text-orange-500" />;
       case "vote_milestone":
         return <ThumbsUp className="w-4 h-4 text-purple-600" />;
       default:

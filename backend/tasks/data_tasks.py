@@ -159,3 +159,18 @@ def rebuild_product_catalog_task() -> dict:
         return {"status": "error", "message": str(e)}
     finally:
         db.close()
+
+
+@celery.task(name="tasks.send_product_alerts")
+def send_product_alerts_task() -> dict:
+    """Send alerts (in-app, e-mail, webhook) for CVEs concerning followed products."""
+    from backend.services import product_alert_service
+
+    db = next(get_db())
+    try:
+        return {"status": "success", **product_alert_service.run(db)}
+    except Exception as e:  # noqa: BLE001
+        logger.error("Product alert run failed: %s: %s", type(e).__name__, e)
+        return {"status": "error", "message": f"{type(e).__name__}"}
+    finally:
+        db.close()

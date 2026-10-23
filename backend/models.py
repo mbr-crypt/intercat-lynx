@@ -1043,6 +1043,90 @@ class ProductCatalog(Base):
         return f"<ProductCatalog({self.vendor}:{self.product}, cves={self.cve_count})>"
 
 
+class NotificationSetting(Base):
+    """
+    How a user wants to hear about new CVEs for the products they follow.
+
+    One row per user. The webhook secret is stored encrypted: the server needs
+    the plain value to sign requests, so it cannot be hashed.
+    """
+
+    __tablename__ = "notification_settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+
+    in_app_enabled = Column(Boolean, nullable=False, default=True)
+    email_enabled = Column(Boolean, nullable=False, default=False)
+    webhook_enabled = Column(Boolean, nullable=False, default=False)
+    webhook_url = Column(String(1000), nullable=True)
+    webhook_secret_encrypted = Column(Text, nullable=True)
+
+    # Only CVEs at least this severe are sent ...
+    min_severity = Column(String(20), nullable=False, default="HIGH")
+    # ... plus every actively exploited one, whatever its severity
+    always_exploited = Column(Boolean, nullable=False, default=True)
+
+    # What happened the last time, so the user can see why nothing arrives
+    last_email_ok_at = Column(DateTime(timezone=True), nullable=True)
+    last_email_error = Column(Text, nullable=True)
+    last_webhook_ok_at = Column(DateTime(timezone=True), nullable=True)
+    last_webhook_error = Column(Text, nullable=True)
+
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    user = relationship("User", backref="notification_setting", uselist=False)
+
+
+class NotificationDelivery(Base):
+    """
+    Which CVE was already sent to which user over which channel. Written only
+    after a successful delivery, so a failed send is tried again later.
+    """
+
+    __tablename__ = "notification_deliveries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    vulnerability_id = Column(
+        Integer, ForeignKey("vulnerabilities.id", ondelete="CASCADE"), nullable=False
+    )
+    channel = Column(String(20), nullable=False)  # in_app, email, webhook
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        Index(
+            "uq_notification_delivery",
+            "user_id",
+            "vulnerability_id",
+            "channel",
+            unique=True,
+        ),
+    )
+
+
 class PageView(Base):
     """
     Track page views for site analytics.

@@ -9,6 +9,8 @@ from ..models import (
     CVEVote,
     EmailVerification,
     Notification,
+    NotificationDelivery,
+    NotificationSetting,
     User,
     WatchedProduct,
 )
@@ -55,6 +57,12 @@ def delete_user_and_data(db: Session, user: User) -> None:
     db.query(CVEVote).filter(CVEVote.user_id == user.id).delete(synchronize_session=False)
     db.query(Bookmark).filter(Bookmark.user_id == user.id).delete(synchronize_session=False)
     db.query(WatchedProduct).filter(WatchedProduct.user_id == user.id).delete(
+        synchronize_session=False
+    )
+    db.query(NotificationDelivery).filter(NotificationDelivery.user_id == user.id).delete(
+        synchronize_session=False
+    )
+    db.query(NotificationSetting).filter(NotificationSetting.user_id == user.id).delete(
         synchronize_session=False
     )
     db.query(Notification).filter(Notification.user_id == user.id).delete(synchronize_session=False)

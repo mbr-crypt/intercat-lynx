@@ -49,6 +49,11 @@ celery_app.conf.beat_schedule = {
         "task": "tasks.fetch_cisa_kev",
         "schedule": crontab(minute=0, hour=9),  # Daily at 09:00 UTC
     },
+    # Alerts for followed products: after the NVD fetch lands and in between
+    "send-product-alerts": {
+        "task": "tasks.send_product_alerts",
+        "schedule": crontab(minute="*/10"),  # Every 10 minutes
+    },
     # Vendor/product list for the product picker, once a day
     "rebuild-product-catalog": {
         "task": "tasks.rebuild_product_catalog",

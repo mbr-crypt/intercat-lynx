@@ -73,12 +73,53 @@ function messageOf(body: any, fallback: string): string {
   return fallback;
 }
 
-export async function watchFetch<T>(
+export interface NotificationSettings {
+  in_app_enabled: boolean;
+  email_enabled: boolean;
+  email_address: string;
+  smtp_configured: boolean;
+  webhook_enabled: boolean;
+  webhook_url: string | null;
+  webhook_has_secret: boolean;
+  min_severity: string;
+  always_exploited: boolean;
+  last_email_ok_at: string | null;
+  last_email_error: string | null;
+  last_webhook_ok_at: string | null;
+  last_webhook_error: string | null;
+  /** only present in the answer that created or renewed the secret */
+  new_webhook_secret: string | null;
+}
+
+export type NotificationSettingsPatch = Partial<
+  Pick<
+    NotificationSettings,
+    "in_app_enabled" | "email_enabled" | "webhook_enabled" | "webhook_url" | "min_severity" | "always_exploited"
+  >
+>;
+
+export function watchFetch<T>(
   token: string,
   path: string,
   init: { method?: string; body?: unknown } = {}
 ): Promise<T> {
-  const response = await fetch(`/api/v1/watchlist${path}`, {
+  return apiFetch<T>(token, `/api/v1/watchlist${path}`, init);
+}
+
+export function notifyFetch<T>(
+  token: string,
+  path: string,
+  init: { method?: string; body?: unknown } = {}
+): Promise<T> {
+  return apiFetch<T>(token, `/api/v1/notification-settings${path}`, init);
+}
+
+async function apiFetch<T>(
+  token: string,
+  url: string,
+  init: { method?: string; body?: unknown } = {}
+): Promise<T> {
+  const response = await fetch(url, {
     method: init.method ?? "GET",
     headers: {
       Authorization: `Bearer ${token}`,
