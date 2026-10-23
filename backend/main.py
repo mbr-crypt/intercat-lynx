@@ -98,6 +98,7 @@ from .api import (
     health,
     mfa,
     news,
+    notification_settings,
     notifications,
     search,
     setup,
@@ -119,6 +120,11 @@ app.include_router(mfa.router, prefix="/api/v1/auth", tags=["Authentication"])
 app.include_router(csrf.router, prefix="/api/v1", tags=["Security"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
 app.include_router(users.router, prefix="/api/v1/admin/users", tags=["User management"])
+app.include_router(
+    notification_settings.router,
+    prefix="/api/v1/notification-settings",
+    tags=["Product alerts"],
+)
 app.include_router(
     watchlist.router, prefix="/api/v1/watchlist", tags=["Product selection"]
 )
