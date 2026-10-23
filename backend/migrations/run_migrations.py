@@ -7,6 +7,8 @@ This script is executed automatically when the backend starts.
 import logging
 import re
 import os
+import time
+from contextlib import contextmanager
 from pathlib import Path
 
 from sqlalchemy import text
@@ -18,6 +20,45 @@ logger = logging.getLogger(__name__)
 _CONCURRENT_INDEX = re.compile(
     r"CREATE\s+(?:UNIQUE\s+)?INDEX\s+CONCURRENTLY[^;]*;", re.IGNORECASE
 )
+
+
+# One lock for everything that changes the schema at start-up. The backend runs
+# as several processes (replicas x uvicorn workers) that all start at the same
+# moment; without it they migrate in parallel and fail with deadlocks and
+# "duplicate key" errors (seen in the first Docker test).
+_LOCK_ID = 727270101
+
+
+@contextmanager
+def _schema_lock(timeout: float = 600.0, poll: float = 0.25):
+    """
+    Hold a PostgreSQL advisory lock while the schema is changed (no-op elsewhere).
+
+    The lock is taken by polling ``pg_try_advisory_lock`` instead of blocking in
+    ``pg_advisory_lock``. A process that waits inside a blocking call counts as
+    an open transaction, and ``CREATE INDEX CONCURRENTLY`` waits for all open
+    transactions - including the ones waiting for the very lock its own process
+    holds. That cycle is invisible to PostgreSQL's deadlock detector and hangs
+    the start for good (reproduced with six parallel processes).
+    """
+    if engine.dialect.name != "postgresql":
+        yield
+        return
+    with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as lock:
+        deadline = time.monotonic() + timeout
+        while not lock.execute(
+            text("SELECT pg_try_advisory_lock(:id)"), {"id": _LOCK_ID}
+        ).scalar():
+            if time.monotonic() > deadline:
+                raise RuntimeError(
+                    "Another process has been changing the database schema for "
+                    f"more than {int(timeout)} seconds"
+                )
+            time.sleep(poll)
+        try:
+            yield
+        finally:
+            lock.execute(text("SELECT pg_advisory_unlock(:id)"), {"id": _LOCK_ID})
 
 
 def run_alembic_upgrade() -> None:
@@ -44,19 +85,22 @@ def run_alembic_upgrade() -> None:
     cfg = Config(str(ini))
     cfg.set_main_option("script_location", str(root / "alembic"))
 
-    with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as lock:
-        lock.execute(text("SELECT pg_advisory_lock(727270101)"))
-        try:
-            command.upgrade(cfg, "head")
-        finally:
-            lock.execute(text("SELECT pg_advisory_unlock(727270101)"))
+    with _schema_lock():
+        command.upgrade(cfg, "head")
 
 
 def run_migrations():
     """
     Run all SQL migrations in the migrations directory.
-    Migrations are idempotent and safe to run multiple times.
+    Migrations are idempotent and safe to run multiple times. They run one
+    process at a time (advisory lock), so the second process simply finds
+    everything in place.
     """
+    with _schema_lock():
+        _run_sql_migrations()
+
+
+def _run_sql_migrations():
     migrations_dir = Path(__file__).parent
     migration_files = sorted(migrations_dir.glob("*.sql"))
 
