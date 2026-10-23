@@ -8,6 +8,7 @@ and get a list of known CVEs affecting their tech stack.
 import base64
 import json
 import logging
+import re
 import secrets
 from typing import List, Optional
 
@@ -23,6 +24,55 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# Upper bounds for anonymous scans. Every package becomes part of a regular
+# expression that runs against the CVE table, so the count and the length of
+# each name have to be limited.
+MAX_PACKAGES = 500
+MAX_PACKAGE_NAME_LENGTH = 214  # longest name npm allows
+_SESSION_ID_PATTERN = re.compile(r"^[0-9a-f]{32,128}$")
+
+
+def _check_package_count(count: int) -> None:
+    if count > MAX_PACKAGES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Maximum {MAX_PACKAGES} packages allowed per scan.",
+        )
+
+
+def _clean_session_id(value: Optional[str]) -> str:
+    """Return a usable session id. The id is the only secret protecting an
+    anonymous scan, so a client-supplied one must be long and random."""
+    if not value:
+        return secrets.token_hex(32)
+    if not _SESSION_ID_PATTERN.match(value):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid session_id. Use 32-128 hex characters or omit it.",
+        )
+    return value
+
+
+def _is_valid_package_entry(pkg) -> bool:
+    """Entries of the base64 payloads are not checked by Pydantic."""
+    return (
+        isinstance(pkg, dict)
+        and isinstance(pkg.get("name"), str)
+        and 0 < len(pkg["name"]) <= MAX_PACKAGE_NAME_LENGTH
+        and isinstance(pkg.get("version") or "", str)
+        and len(pkg.get("version") or "") <= 100
+        and isinstance(pkg.get("ecosystem", "npm"), str)
+        and len(pkg.get("ecosystem", "npm")) <= 30
+    )
+
+
+def _require_session_access(tech_stack: TechStack, session_id: Optional[str]) -> None:
+    """403 unless the caller knows the session id the scan was stored with.
+    Scans without a session id (older data) are not reachable anonymously."""
+    stored = tech_stack.session_id
+    if not stored or not session_id or not secrets.compare_digest(stored, session_id):
+        raise HTTPException(status_code=403, detail="Access denied.")
+
 
 # =============================================================================
 # Pydantic Schemas
@@ -32,9 +82,9 @@ router = APIRouter()
 class PackageInfo(BaseModel):
     """Single package information."""
 
-    name: str
-    version: Optional[str] = None
-    ecosystem: str = "npm"
+    name: str = Field(..., min_length=1, max_length=MAX_PACKAGE_NAME_LENGTH)
+    version: Optional[str] = Field(None, max_length=100)
+    ecosystem: str = Field("npm", max_length=30)
     dev: bool = False
 
 
@@ -120,7 +170,7 @@ class SupportedFormatsResponse(BaseModel):
 class TechStackMatchRequest(BaseModel):
     """Request to check packages against known CVEs without persisting anything."""
 
-    packages: List[PackageInfo]
+    packages: List[PackageInfo] = Field(..., max_length=MAX_PACKAGES)
 
 
 class StatelessMatchResponse(BaseModel):
@@ -285,17 +335,19 @@ async def scan_dependency_file(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Failed to parse file {filename}: {e}")
-        raise HTTPException(status_code=400, detail=f"Failed to parse file: {str(e)}")
+        raise HTTPException(
+            status_code=400,
+            detail="Could not read the file. Check that it is a valid dependency file.",
+        )
 
     if not packages:
         raise HTTPException(
             status_code=400,
             detail="No packages found in the file. Please check the file format.",
         )
+    _check_package_count(len(packages))
 
-    # Generate session ID if not provided
-    if not session_id:
-        session_id = secrets.token_hex(32)
+    session_id = _clean_session_id(session_id)
 
     # Create tech stack name
     stack_name = name or f"Scan of {filename}"
@@ -339,10 +391,7 @@ async def scan_manual_packages(
     if not request.packages:
         raise HTTPException(status_code=400, detail="At least one package is required.")
 
-    if len(request.packages) > 500:
-        raise HTTPException(
-            status_code=400, detail="Maximum 500 packages allowed per scan."
-        )
+    _check_package_count(len(request.packages))
 
     # Convert to internal format
     packages = [
@@ -356,7 +405,7 @@ async def scan_manual_packages(
     ]
 
     # Generate session ID if not provided
-    session_id = request.session_id or secrets.token_hex(32)
+    session_id = _clean_session_id(request.session_id)
 
     # Create tech stack and scan
     service = get_techstack_service()
@@ -406,10 +455,9 @@ async def scan_manual_packages_encoded(
     if "packages" not in payload or not payload["packages"]:
         raise HTTPException(status_code=400, detail="At least one package is required.")
 
-    if len(payload["packages"]) > 500:
-        raise HTTPException(
-            status_code=400, detail="Maximum 500 packages allowed per scan."
-        )
+    if not isinstance(payload["packages"], list):
+        raise HTTPException(status_code=400, detail="Invalid encoded payload")
+    _check_package_count(len(payload["packages"]))
 
     # Convert to internal format
     packages = [
@@ -420,10 +468,13 @@ async def scan_manual_packages_encoded(
             "dev": pkg.get("dev", False),
         }
         for pkg in payload["packages"]
+        if _is_valid_package_entry(pkg)
     ]
+    if not packages:
+        raise HTTPException(status_code=400, detail="No valid packages found.")
 
     # Generate session ID
-    session_id = payload.get("session_id") or secrets.token_hex(32)
+    session_id = _clean_session_id(payload.get("session_id"))
 
     # Create tech stack and scan
     service = get_techstack_service()
@@ -484,15 +535,14 @@ async def scan_packages_get(
     if not packages_data:
         raise HTTPException(status_code=400, detail="At least one package is required.")
 
-    if len(packages_data) > 500:
-        raise HTTPException(
-            status_code=400, detail="Maximum 500 packages allowed per scan."
-        )
+    if not isinstance(packages_data, list):
+        raise HTTPException(status_code=400, detail="Invalid payload format.")
+    _check_package_count(len(packages_data))
 
     # Convert to internal format
     packages = []
     for pkg in packages_data:
-        if not isinstance(pkg, dict) or "name" not in pkg:
+        if not _is_valid_package_entry(pkg):
             continue
         packages.append(
             {
@@ -551,8 +601,7 @@ async def get_tech_stack(
         raise HTTPException(status_code=404, detail="Tech stack not found.")
 
     # Verify ownership (for anonymous users)
-    if tech_stack.session_id and tech_stack.session_id != session_id:
-        raise HTTPException(status_code=403, detail="Access denied.")
+    _require_session_access(tech_stack, session_id)
 
     # Get results
     service = get_techstack_service()
@@ -582,8 +631,7 @@ async def rescan_tech_stack(
         raise HTTPException(status_code=404, detail="Tech stack not found.")
 
     # Verify ownership
-    if tech_stack.session_id and tech_stack.session_id != session_id:
-        raise HTTPException(status_code=403, detail="Access denied.")
+    _require_session_access(tech_stack, session_id)
 
     # Rescan
     service = get_techstack_service()
@@ -606,6 +654,8 @@ async def list_session_tech_stacks(
 
     Returns a summary of each tech stack without full vulnerability details.
     """
+    if not _SESSION_ID_PATTERN.match(session_id):
+        return []
     tech_stacks = (
         db.query(TechStack)
         .filter(TechStack.session_id == session_id)
@@ -645,8 +695,7 @@ async def delete_tech_stack(
         raise HTTPException(status_code=404, detail="Tech stack not found.")
 
     # Verify ownership
-    if tech_stack.session_id and tech_stack.session_id != session_id:
-        raise HTTPException(status_code=403, detail="Access denied.")
+    _require_session_access(tech_stack, session_id)
 
     # Delete
     db.delete(tech_stack)

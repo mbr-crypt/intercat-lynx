@@ -474,7 +474,10 @@ class EmailVerification(Base):
 
     def is_expired(self) -> bool:
         """Check if code is expired."""
-        return datetime.now(timezone.utc) > self.expires_at
+        expires = self.expires_at
+        if expires.tzinfo is None:  # some databases (SQLite) drop the time zone
+            expires = expires.replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc) > expires
 
     def is_valid(self) -> bool:
         """Check if code is valid (not used and not expired)."""
