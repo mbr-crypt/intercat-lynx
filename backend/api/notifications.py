@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from ..database import REDIS_URL, get_db
 from ..models import Comment, Notification, User
-from ..utils.auth import get_current_active_user
+from ..dependencies.auth import get_current_active_user
 
 logger = logging.getLogger(__name__)
 

@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from ..database import get_db
 from ..models import Bookmark, User, Vulnerability
-from ..utils.auth import get_current_active_user
+from ..dependencies.auth import get_current_active_user
 
 logger = logging.getLogger(__name__)
 

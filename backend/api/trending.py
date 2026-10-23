@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import CVEVote, User, Vulnerability
 from ..schemas import PaginatedResponse
-from ..utils.auth import get_optional_current_user
+from ..dependencies.auth import optional_user as get_optional_current_user
 
 logger = logging.getLogger(__name__)
 

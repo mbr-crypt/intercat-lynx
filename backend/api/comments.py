@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from ..database import get_db
 from ..models import Comment, CommentVote, User, Vulnerability
-from ..utils.auth import get_current_active_user, get_optional_current_user
+from ..dependencies.auth import get_current_active_user, optional_user as get_optional_current_user
 from ..utils.notifications import create_reply_notification, create_vote_notification
 
 logger = logging.getLogger(__name__)
