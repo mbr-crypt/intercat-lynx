@@ -12,6 +12,7 @@ import { formatDate } from "@/lib/admin-api";
 import { inputClass, secondaryButton, selectClass } from "@/components/admin/Modal";
 import { NotificationSettingsCard } from "@/components/NotificationSettingsCard";
 import { ApiTokensCard } from "@/components/ApiTokensCard";
+import { TrendChart } from "@/components/TrendChart";
 import {
   watchFetch,
   type CatalogResult,
@@ -188,6 +189,14 @@ export default function WatchlistPage() {
         <Tile title="Letzte 24 Stunden" data={summary?.last_24h} />
         <Tile title="Letzte 7 Tage" data={summary?.last_7d} />
       </div>
+
+      {watches.length > 0 && (
+        <TrendChart
+          title="Neue CVEs zu deinen Produkten"
+          description="Nur Schwachstellen, die zu den Produkten passen, denen du folgst."
+          token={token}
+        />
+      )}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
         <div className="space-y-6">

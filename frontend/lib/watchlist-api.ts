@@ -151,3 +151,39 @@ export function tokenFetch<T>(
 ): Promise<T> {
   return apiFetch<T>(token, `/api/v1/api-tokens${path}`, init);
 }
+
+export type TrendPeriod = "day" | "week" | "month";
+
+export interface TrendBucket {
+  date: string;
+  total: number;
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
+  unknown: number;
+  exploited: number;
+  partial: boolean;
+}
+
+export interface TrendData {
+  period: TrendPeriod;
+  from: string;
+  to: string;
+  buckets: TrendBucket[];
+  total: number;
+  previous_total: number;
+}
+
+export async function fetchTrend(
+  period: TrendPeriod,
+  days: number,
+  token?: string | null
+): Promise<TrendData> {
+  const query = `period=${period}&days=${days}`;
+  if (token) return apiFetch<TrendData>(token, `/api/v1/watchlist/trend?${query}`);
+  const response = await fetch(`/api/v1/stats/trend?${query}`);
+  const body = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(messageOf(body, `Fehler ${response.status}`));
+  return body as TrendData;
+}
