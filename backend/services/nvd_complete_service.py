@@ -49,8 +49,13 @@ class NVDCompleteService:
             api_key = runtime("nvd.api_key", "NVD_API_KEY")
         self.api_key = api_key
         self.session = requests.Session()
-        # Optional hook for progress display: callback(processed, total)
+        # Optional hooks for progress display (setup assistant):
+        #   progress_callback(processed, total, note=None)
+        #   event_callback(text)  - one line for the visible event log
         self.progress_callback = None
+        self.event_callback = None
+        # cve.org lookups in a row that failed on the network (see fallback)
+        self._fallback_errors = 0
 
         if self.api_key:
             self.session.headers.update({"apiKey": self.api_key})
@@ -59,6 +64,15 @@ class NVDCompleteService:
         else:
             self.rate_limit_delay = self.RATE_LIMIT_DELAY
             logger.warning("No NVD API key - using public rate limit (slower)")
+
+    def _event(self, text: str) -> None:
+        """Tell the caller what is happening (best effort, never fatal)."""
+        logger.info(text)
+        if self.event_callback:
+            try:
+                self.event_callback(text)
+            except Exception:  # noqa: BLE001
+                pass
 
     def fetch_all_cves(
         self,
@@ -175,6 +189,9 @@ class NVDCompleteService:
 
                 # Fetch page
                 logger.info(f"Fetching CVEs: startIndex={params['startIndex']}")
+                page = params["startIndex"] // self.RESULTS_PER_PAGE + 1
+                if page == 1 and not total_processed:
+                    self._event("Erste Anfrage an die NVD läuft (kann bis zu einer Minute dauern)")
                 response = self.session.get(self.BASE_URL, params=params, timeout=30)
                 response.raise_for_status()
                 consecutive_errors = 0
@@ -189,12 +206,26 @@ class NVDCompleteService:
                     logger.info("No more CVEs to fetch")
                     break
 
+                pages = max(1, -(-total_results // self.RESULTS_PER_PAGE))
+                self._event(
+                    f"Seite {page} von {pages}: {len(vulnerabilities)} CVEs empfangen "
+                    f"({total_results} insgesamt), werden gespeichert"
+                )
+
                 # Process CVEs
                 db = next(get_db())
                 try:
-                    for vuln_data in vulnerabilities:
+                    for number, vuln_data in enumerate(vulnerabilities, start=1):
                         self._process_cve(db, vuln_data)
                         total_processed += 1
+                        # Saving a page can take minutes (one extra request per
+                        # CVE without product data), so report in between
+                        if self.progress_callback and number % 25 == 0:
+                            self.progress_callback(
+                                params["startIndex"] + number,
+                                total_results,
+                                f"Seite {page} von {pages}: {number} von {len(vulnerabilities)} gespeichert",
+                            )
 
                     db.commit()
                     logger.info(
@@ -202,6 +233,7 @@ class NVDCompleteService:
                     )
 
                     # Refresh stats cache after each batch
+                    self._event(f"Seite {page} von {pages} gespeichert, Statistik wird aktualisiert")
                     refresh_stats_cache(db)
 
                     if self.progress_callback:
@@ -233,11 +265,15 @@ class NVDCompleteService:
             except requests.exceptions.RequestException as e:
                 consecutive_errors += 1
                 logger.error(f"Request error: {e}")
+                self._event(
+                    f"NVD-Anfrage fehlgeschlagen ({type(e).__name__}), "
+                    f"Versuch {consecutive_errors} von 5"
+                )
                 if consecutive_errors >= 5:
                     # Do not retry forever (e.g. no internet access, blocked
                     # firewall): surface the problem to the caller instead.
                     raise
-                logger.info("Retrying in 30 seconds...")
+                self._event("Neuer Versuch in 30 Sekunden")
                 time.sleep(30)
                 continue
 
@@ -490,8 +526,16 @@ class NVDCompleteService:
             Dict mapping vendor names to sets of product names (empty on any
             failure - this is a best-effort enrichment, never fatal).
         """
+        # If cve.org cannot be reached at all (firewall, no internet), every
+        # lookup would wait for its 5 s timeout, one CVE after the other.
+        # After 5 network failures in a row the lookup is skipped for the rest
+        # of this run.
+        errors = getattr(self, "_fallback_errors", 0)
+        if errors >= 5:
+            return {}
         try:
             response = requests.get(f"{self.CVE_ORG_URL}{cve_id}", timeout=5)
+            self._fallback_errors = 0
             if response.status_code != 200:
                 return {}
 
@@ -513,6 +557,12 @@ class NVDCompleteService:
             return vendors_products
         except Exception as e:
             logger.debug(f"CVE.org fallback lookup failed for {cve_id}: {e}")
+            self._fallback_errors = errors + 1
+            if self._fallback_errors == 5:
+                self._event(
+                    "cve.org ist nicht erreichbar, die Zusatzabfrage der Produktdaten "
+                    "wird für diesen Lauf übersprungen"
+                )
             return {}
 
     def _calculate_priority(
