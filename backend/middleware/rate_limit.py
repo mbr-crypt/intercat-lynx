@@ -10,6 +10,7 @@ from typing import Dict, Tuple
 
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
+from ..utils.client_ip import get_client_ip
 
 logger = logging.getLogger(__name__)
 
@@ -95,27 +96,8 @@ class RateLimiter:
         return True, ""
 
     def get_client_ip(self, request: Request) -> str:
-        """
-        Extract client IP from request.
-
-        Args:
-            request: FastAPI request
-
-        Returns:
-            Client IP address
-        """
-        # Check for forwarded IP (behind proxy)
-        forwarded = request.headers.get("X-Forwarded-For")
-        if forwarded:
-            return forwarded.split(",")[0].strip()
-
-        # Check for real IP
-        real_ip = request.headers.get("X-Real-IP")
-        if real_ip:
-            return real_ip
-
-        # Fall back to direct connection
-        return request.client.host if request.client else "unknown"
+        """Client address behind our proxy, see ``utils/client_ip.py`` for the rules."""
+        return get_client_ip(request)
 
 
 # Global rate limiter instance
