@@ -27,6 +27,7 @@ from ..schemas.watchlist import (
     WatchSummary,
     WindowSummary,
 )
+from ..services import trend_service
 from ..services import watchlist_service as wl
 
 logger = logging.getLogger(__name__)
@@ -243,3 +244,21 @@ async def summary(user: User = Depends(get_current_user), db: Session = Depends(
         last_24h=WindowSummary(**wl.window_counts(db, watches, 1)),
         last_7d=WindowSummary(**wl.window_counts(db, watches, 7)),
     )
+
+
+@router.get("/trend")
+async def my_trend(
+    period: str = Query("day", pattern="^(day|week|month)$"),
+    days: Optional[int] = Query(None, ge=1, le=3660),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """New CVEs over time for the followed products only (same format as /stats/trend)."""
+    days = days or trend_service.DEFAULT_DAYS[period]
+    if days > trend_service.MAX_DAYS[period]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"For period={period} at most {trend_service.MAX_DAYS[period]} days are allowed",
+        )
+    query = wl.matching_query(db, _my_watches(db, user))
+    return trend_service.trend(db, query, period, days)

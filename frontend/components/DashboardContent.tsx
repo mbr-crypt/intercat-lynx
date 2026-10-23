@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, Shield, Clock, Calendar, Filter, X, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
+import { TrendChart } from "@/components/TrendChart";
 import { formatDate, getSeverityBadgeColor, getSeverityAccentColor } from "@/lib/utils";
 
 const CLIENT_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001';
@@ -216,6 +217,11 @@ export function DashboardContent() {
           </div>
         </form>
       </div>
+
+      <TrendChart
+        title="Neue CVEs im Zeitverlauf"
+        description="Veröffentlichte Schwachstellen pro Tag, Woche oder Monat, nach Schweregrad."
+      />
 
       {/* CVE List Section */}
       <div className="space-y-4">

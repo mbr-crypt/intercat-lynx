@@ -8,13 +8,14 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import redis
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import case, desc, func, text
 from sqlalchemy.orm import Session
 
 from ..database import REDIS_URL, get_db
 from ..models import IngestionRun, Vulnerability
 from ..schemas import StatsResponse
+from ..services import trend_service
 
 logger = logging.getLogger(__name__)
 
@@ -283,3 +284,24 @@ async def get_ingestion_history(limit: int = 10, db: Session = Depends(get_db)):
             for run in runs
         ]
     }
+
+
+@router.get("/stats/trend")
+async def get_trend(
+    period: str = Query("day", pattern="^(day|week|month)$"),
+    days: Optional[int] = Query(None, ge=1, le=3660),
+    db: Session = Depends(get_db),
+):
+    """
+    New CVEs over time, per day, week (Monday) or month, split by severity.
+
+    `days` is how far back to look; the default and the maximum depend on the
+    period (day: 90 / 366, week: 366 / 1098, month: 1830 / 3660).
+    """
+    days = days or trend_service.DEFAULT_DAYS[period]
+    if days > trend_service.MAX_DAYS[period]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"For period={period} at most {trend_service.MAX_DAYS[period]} days are allowed",
+        )
+    return trend_service.trend(db, db.query(Vulnerability), period, days)
