@@ -134,3 +134,20 @@ async function apiFetch<T>(
   }
   return body as T;
 }
+
+export interface ApiTokenInfo {
+  id: number;
+  name: string;
+  prefix: string;
+  created_at: string;
+  last_used_at: string | null;
+  expires_at: string | null;
+}
+
+export function tokenFetch<T>(
+  token: string,
+  path: string,
+  init: { method?: string; body?: unknown } = {}
+): Promise<T> {
+  return apiFetch<T>(token, `/api/v1/api-tokens${path}`, init);
+}

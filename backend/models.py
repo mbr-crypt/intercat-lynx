@@ -1127,6 +1127,35 @@ class NotificationDelivery(Base):
     )
 
 
+class ApiToken(Base):
+    """
+    Read-only access token for machines (Zabbix polls the product summary with
+    it). Only a SHA-256 hash is stored, so a database leak does not expose
+    working tokens; the token itself is shown once when it is created. Tokens
+    are long random strings, so a fast hash is enough (unlike passwords).
+    """
+
+    __tablename__ = "api_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name = Column(String(100), nullable=False)
+    token_hash = Column(String(64), nullable=False, unique=True, index=True)
+    # first characters of the token, so the user can tell tokens apart
+    prefix = Column(String(16), nullable=False)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    last_used_at = Column(DateTime(timezone=True), nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+
+    user = relationship("User", backref="api_tokens")
+
+
 class PageView(Base):
     """
     Track page views for site analytics.

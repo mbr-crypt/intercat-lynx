@@ -11,6 +11,7 @@ import { getSeverityBadgeColor } from "@/lib/utils";
 import { formatDate } from "@/lib/admin-api";
 import { inputClass, secondaryButton, selectClass } from "@/components/admin/Modal";
 import { NotificationSettingsCard } from "@/components/NotificationSettingsCard";
+import { ApiTokensCard } from "@/components/ApiTokensCard";
 import {
   watchFetch,
   type CatalogResult,
@@ -299,6 +300,8 @@ export default function WatchlistPage() {
           </Card>
 
           <NotificationSettingsCard token={token} />
+
+          <ApiTokensCard token={token} />
         </div>
 
         <Card>

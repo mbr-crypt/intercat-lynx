@@ -3,6 +3,7 @@
 from sqlalchemy.orm import Session
 
 from ..models import (
+    ApiToken,
     Bookmark,
     Comment,
     CommentVote,
@@ -65,6 +66,7 @@ def delete_user_and_data(db: Session, user: User) -> None:
     db.query(NotificationSetting).filter(NotificationSetting.user_id == user.id).delete(
         synchronize_session=False
     )
+    db.query(ApiToken).filter(ApiToken.user_id == user.id).delete(synchronize_session=False)
     db.query(Notification).filter(Notification.user_id == user.id).delete(synchronize_session=False)
     db.query(Notification).filter(Notification.actor_id == user.id).update(
         {Notification.actor_id: None}, synchronize_session=False

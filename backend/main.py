@@ -90,6 +90,7 @@ app.add_api_route(
 from .api import (
     admin,
     analytics,
+    api_tokens,
     auth,
     bookmarks,
     comments,
@@ -109,6 +110,7 @@ from .api import (
     vulnerabilities,
     waitlist,
     watchlist,
+    zabbix,
 )
 from .api.v1 import data_sources, llm
 
@@ -120,6 +122,8 @@ app.include_router(mfa.router, prefix="/api/v1/auth", tags=["Authentication"])
 app.include_router(csrf.router, prefix="/api/v1", tags=["Security"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
 app.include_router(users.router, prefix="/api/v1/admin/users", tags=["User management"])
+app.include_router(api_tokens.router, prefix="/api/v1/api-tokens", tags=["API tokens"])
+app.include_router(zabbix.router, prefix="/api/v1/zabbix", tags=["Zabbix"])
 app.include_router(
     notification_settings.router,
     prefix="/api/v1/notification-settings",
