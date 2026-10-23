@@ -8,7 +8,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import HTTPException, status
-from jose import JWTError, jwt
+import jwt
+from jwt import PyJWTError
 
 logger = logging.getLogger(__name__)
 
@@ -83,8 +84,13 @@ def decode_access_token(token: str, purpose: Optional[str] = None) -> dict:
         HTTPException: If token is invalid, expired or of the wrong kind
     """
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-    except JWTError as e:
+        payload = jwt.decode(
+            token,
+            SECRET_KEY,
+            algorithms=[ALGORITHM],
+            options={"require": ["exp"]},  # a token without expiry is never valid
+        )
+    except PyJWTError as e:
         logger.warning(f"JWT decode error: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
