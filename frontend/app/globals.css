@@ -115,3 +115,12 @@ body {
     background: radial-gradient(ellipse at top, rgb(34 113 179 / 0.18), transparent 70%);
   }
 }
+
+/* Setup assistant: moving bar while the amount of work is not known yet */
+@keyframes lynx-indeterminate {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lynx-indeterminate { animation: none !important; transform: none !important; width: 100% !important; opacity: 0.5; }
+}

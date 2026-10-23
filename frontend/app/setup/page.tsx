@@ -24,12 +24,30 @@ const STEPS: { id: Step; label: string }[] = [
 ];
 
 interface Check { name: string; ok: boolean; required: boolean; detail: string }
+interface ImportLogEntry { t: string; text: string }
 interface ImportStatus {
   state: 'idle' | 'running' | 'done' | 'error' | 'interrupted';
   phase?: string;
   processed?: number;
   total?: number | null;
   message?: string;
+  detail?: string | null;
+  log?: ImportLogEntry[];
+  elapsed_seconds?: number;
+  seconds_since_heartbeat?: number;
+}
+
+const IMPORT_PHASES: { id: string; label: string }[] = [
+  { id: 'nvd', label: 'CVE-Daten von der NVD laden' },
+  { id: 'cisa_kev', label: 'Aktiv ausgenutzte Lücken abgleichen (CISA KEV)' },
+  { id: 'stats', label: 'Statistik berechnen' },
+  { id: 'catalog', label: 'Produktkatalog aufbauen' },
+];
+
+function formatDuration(totalSeconds: number): string {
+  const s = Math.max(0, Math.round(totalSeconds));
+  const m = Math.floor(s / 60);
+  return m > 0 ? `${m} Min. ${String(s % 60).padStart(2, '0')} s` : `${s} s`;
 }
 
 function errorText(data: any, fallback: string): string {
@@ -59,6 +77,7 @@ export default function SetupPage() {
         method,
         headers: { 'Content-Type': 'application/json', 'X-Setup-Token': token },
         body: body === undefined ? undefined : JSON.stringify(body),
+        cache: 'no-store',
       });
       const data = await res.json().catch(() => ({}));
       return { ok: res.ok, status: res.status, data };
@@ -504,11 +523,31 @@ function ImportStep({ call, onNext }: { call: Call; onNext: () => void }) {
   const [days, setDays] = useState(30);
   const [status, setStatus] = useState<ImportStatus>({ state: 'idle' });
   const [error, setError] = useState('');
+  const [connectionLost, setConnectionLost] = useState(false);
+  const [tick, setTick] = useState(0);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Right after "Import starten" the server may still answer "idle" for a moment
+  // (the job writes its first status a split second later). Do not jump back
+  // to the form because of that.
+  const startedAt = useRef<number | null>(null);
+  const receivedAt = useRef<number>(Date.now());
+  const failures = useRef(0);
 
   const poll = useCallback(async () => {
-    const r = await call('GET', '/import/status');
-    if (r.ok) setStatus(r.data);
+    try {
+      const r = await call('GET', '/import/status');
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      failures.current = 0;
+      setConnectionLost(false);
+      const waiting = startedAt.current !== null && Date.now() - startedAt.current < 20000;
+      if (r.data.state === 'idle' && waiting) return;
+      if (r.data.state !== 'idle') startedAt.current = null;
+      receivedAt.current = Date.now();
+      setStatus(r.data);
+    } catch {
+      failures.current += 1;
+      if (failures.current >= 3) setConnectionLost(true);
+    }
   }, [call]);
 
   useEffect(() => {
@@ -516,22 +555,45 @@ function ImportStep({ call, onNext }: { call: Call; onNext: () => void }) {
     return () => { if (timer.current) clearInterval(timer.current); };
   }, [poll]);
 
+  const running = status.state === 'running';
+
   useEffect(() => {
-    if (status.state === 'running' && !timer.current) timer.current = setInterval(poll, 2000);
-    if (status.state !== 'running' && timer.current) { clearInterval(timer.current); timer.current = null; }
-  }, [status.state, poll]);
+    if (running && !timer.current) timer.current = setInterval(poll, 2000);
+    if (!running && timer.current) { clearInterval(timer.current); timer.current = null; }
+  }, [running, poll]);
+
+  // One-second clock so the running time keeps counting between two polls
+  useEffect(() => {
+    if (!running) return;
+    const id = setInterval(() => setTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [running]);
 
   const start = async () => {
     setError('');
     if (mode === 'skip') { onNext(); return; }
-    const r = await call('POST', '/import', { mode, days });
+    let r;
+    try {
+      r = await call('POST', '/import', { mode, days });
+    } catch {
+      setError('Keine Verbindung zum Server. Bitte erneut versuchen.');
+      return;
+    }
     if (!r.ok) { setError(errorText(r.data, 'Import konnte nicht gestartet werden')); return; }
-    setStatus({ state: 'running', phase: 'nvd', message: 'Wird gestartet…' });
-    setTimeout(poll, 1000);
+    startedAt.current = Date.now();
+    receivedAt.current = Date.now();
+    setStatus({ state: 'running', phase: 'nvd', message: 'Wird gestartet…', elapsed_seconds: 0, seconds_since_heartbeat: 0, log: [] });
+    setTimeout(poll, 800);
   };
 
   const pct = status.total ? Math.min(100, Math.round(((status.processed || 0) / status.total) * 100)) : null;
-  const running = status.state === 'running';
+  const phaseIndex = IMPORT_PHASES.findIndex((p) => p.id === status.phase);
+  const showProgress = running || status.state === 'done' || status.state === 'error' || status.state === 'interrupted';
+  void tick; // re-render every second
+  const sincePoll = running ? (Date.now() - receivedAt.current) / 1000 : 0;
+  const elapsed = (status.elapsed_seconds ?? 0) + sincePoll;
+  const silent = (status.seconds_since_heartbeat ?? 0) + sincePoll;
+  const determinate = status.phase === 'nvd' && pct !== null;
 
   return (
     <Card>
@@ -561,21 +623,95 @@ function ImportStep({ call, onNext }: { call: Call; onNext: () => void }) {
           </div>
         )}
 
-        {(running || status.state === 'done') && (
-          <div className="space-y-2">
-            <div className="h-3 w-full rounded bg-gray-200 dark:bg-gray-700 overflow-hidden">
-              <div className={`h-3 bg-primary transition-all ${pct === null && running ? 'animate-pulse w-1/3' : ''}`}
-                style={pct !== null ? { width: `${status.state === 'done' ? 100 : pct}%` } : status.state === 'done' ? { width: '100%' } : undefined} />
+        {showProgress && (
+          <div className="space-y-3">
+            <ol className="space-y-1 text-sm">
+              {IMPORT_PHASES.map((p, i) => {
+                const finished = status.state === 'done' || (phaseIndex >= 0 && i < phaseIndex);
+                const active = running && i === phaseIndex;
+                const failed = (status.state === 'error' || status.state === 'interrupted') && i === phaseIndex;
+                return (
+                  <li key={p.id} className="flex items-center gap-2">
+                    {finished ? <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" aria-hidden />
+                      : active ? <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" aria-hidden />
+                      : failed ? <XCircle className="h-4 w-4 text-red-600 shrink-0" aria-hidden />
+                      : <span className="h-4 w-4 shrink-0 rounded-full border border-gray-300 dark:border-gray-600" aria-hidden />}
+                    <span className={finished || active || failed ? 'text-gray-900 dark:text-white' : 'text-gray-500'}>
+                      {p.label}
+                      <span className="sr-only">{finished ? ' (erledigt)' : active ? ' (läuft)' : failed ? ' (fehlgeschlagen)' : ' (wartet)'}</span>
+                    </span>
+                  </li>
+                );
+              })}
+            </ol>
+
+            <div
+              className="relative h-3 w-full rounded bg-gray-200 dark:bg-gray-700 overflow-hidden"
+              role="progressbar"
+              aria-label="Fortschritt des Datenimports"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={status.state === 'done' ? 100 : determinate ? pct ?? undefined : undefined}
+            >
+              {status.state === 'done' || determinate ? (
+                <div className="h-3 bg-primary transition-all duration-500" style={{ width: `${status.state === 'done' ? 100 : pct}%` }} />
+              ) : running ? (
+                <div className="lynx-indeterminate absolute inset-y-0 left-0 w-1/4 rounded bg-primary"
+                  style={{ animation: 'lynx-indeterminate 1.6s ease-in-out infinite' }} />
+              ) : null}
             </div>
-            <p className="text-sm text-gray-700 dark:text-gray-300">
-              {status.message}
-              {pct !== null && status.state === 'running' && ` – ${(status.processed || 0).toLocaleString('de-DE')} von ${status.total?.toLocaleString('de-DE')} (${pct} %)`}
-            </p>
+
+            <div className="text-sm text-gray-700 dark:text-gray-300 space-y-1" role="status" aria-live="polite">
+              <p>
+                {status.message}
+                {determinate && running && (
+                  <> – <strong>{(status.processed || 0).toLocaleString('de-DE')}</strong> von {status.total?.toLocaleString('de-DE')} CVEs ({pct} %)</>
+                )}
+              </p>
+              {running && status.detail && <p className="text-gray-600 dark:text-gray-400">{status.detail}</p>}
+            </div>
+
+            {running && (
+              <p className="text-xs text-gray-500">
+                Laufzeit {formatDuration(elapsed)} · letzte Rückmeldung des Servers vor {formatDuration(silent)}
+              </p>
+            )}
+            {running && silent > 30 && !connectionLost && (
+              <p className="text-sm text-amber-700 dark:text-amber-400" role="alert">
+                <AlertTriangle className="inline h-4 w-4 mr-1" aria-hidden />
+                Seit {formatDuration(silent)} keine Rückmeldung vom Import. Das kann bei sehr langsamer Verbindung
+                zur NVD vorkommen. Nach 90 Sekunden ohne Rückmeldung gilt der Import als abgebrochen und kann
+                neu gestartet werden.
+              </p>
+            )}
+            {running && connectionLost && (
+              <p className="text-sm text-amber-700 dark:text-amber-400" role="alert">
+                <AlertTriangle className="inline h-4 w-4 mr-1" aria-hidden />
+                Der Server antwortet gerade nicht. Der Import läuft möglicherweise weiter, diese Seite versucht es
+                automatisch erneut.
+              </p>
+            )}
+
+            {status.log && status.log.length > 0 && (
+              <details className="text-xs" open={status.state === 'error' || status.state === 'interrupted'}>
+                <summary className="cursor-pointer text-gray-600 dark:text-gray-400">Ereignisprotokoll ({status.log.length})</summary>
+                <ul className="mt-2 space-y-0.5 font-mono text-gray-600 dark:text-gray-400">
+                  {status.log.map((e, i) => (
+                    <li key={`${e.t}-${i}`}>
+                      <span className="text-gray-400">{new Date(e.t).toLocaleTimeString('de-DE')}</span> {e.text}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
           </div>
         )}
 
         {(status.state === 'error' || status.state === 'interrupted') && (
-          <p className="text-sm text-red-600" role="alert">{status.message}</p>
+          <div className="text-sm text-red-600 space-y-1" role="alert">
+            <p>{status.message}</p>
+            <p className="text-gray-600 dark:text-gray-400">Bereits geladene CVEs bleiben erhalten, ein neuer Start aktualisiert sie nur.</p>
+          </div>
         )}
         <ErrorLine text={error} />
 

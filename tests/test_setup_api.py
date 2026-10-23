@@ -212,3 +212,149 @@ def test_stale_running_import_is_shown_as_interrupted(db_session):
         json.dumps({"state": "running", "started_at": old, "heartbeat": old}),
     )
     assert import_job.read_status(db_session)["state"] == "interrupted"
+
+
+# --- live display: heartbeat, event log, protection against double start -------
+
+
+def _store_status(db, **fields):
+    import json
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc).isoformat()
+    status = {"state": "running", "started_at": now, "heartbeat": now, **fields}
+    settings_service.set_value(db, import_job.STATUS_KEY, json.dumps(status))
+
+
+def test_import_job_keeps_a_heartbeat_while_nothing_else_happens(db_session, session_factory, monkeypatch):
+    """A long wait (NVD answers slowly) must still show signs of life."""
+    import json
+    import time
+
+    monkeypatch.setattr(import_job, "HEARTBEAT_INTERVAL", 0.05)
+    seen = []
+
+    class SlowNVD:
+        progress_callback = None
+        event_callback = None
+
+        def fetch_recent_cves(self, days):
+            self.event_callback("Erste Anfrage an die NVD läuft")
+            for _ in range(2):
+                time.sleep(0.3)
+                db = session_factory()
+                try:
+                    seen.append(json.loads(settings_service.get(db, import_job.STATUS_KEY)))
+                finally:
+                    db.close()
+            self.progress_callback(10, 100, "Seite 1 von 1: 10 von 100 gespeichert")
+            return 10
+
+    status = import_job.run_import(
+        session_factory, "recent", 7,
+        nvd_factory=SlowNVD, kev_factory=FakeKEV, stats_refresh=lambda db: True,
+    )
+    assert status["state"] == "done"
+    assert seen[0]["state"] == seen[1]["state"] == "running"
+    assert seen[1]["heartbeat"] > seen[0]["heartbeat"]  # beat although the import did not report
+    assert any("NVD" in e["text"] for e in seen[0]["log"])
+
+
+def test_import_job_event_log_is_limited_and_carries_the_latest_detail(db_session, session_factory):
+    class ChattyNVD:
+        progress_callback = None
+        event_callback = None
+
+        def fetch_recent_cves(self, days):
+            for i in range(40):
+                self.event_callback(f"Ereignis {i}")
+            self.progress_callback(5, 10, "Seite 1 von 1: 5 von 10 gespeichert")
+
+    status = import_job.run_import(
+        session_factory, "recent", 7,
+        nvd_factory=ChattyNVD, kev_factory=FakeKEV, stats_refresh=lambda db: True,
+    )
+    texts = [e["text"] for e in status["log"]]
+    assert len(texts) == import_job.LOG_LIMIT
+    assert texts[-1] == "Import abgeschlossen" and "Ereignis 39" in texts
+
+
+def test_read_status_adds_elapsed_time_and_age_of_last_heartbeat(db_session):
+    import json
+    from datetime import datetime, timedelta, timezone
+
+    started = datetime.now(timezone.utc) - timedelta(seconds=125)
+    beat = datetime.now(timezone.utc) - timedelta(seconds=7)
+    settings_service.set_value(
+        db_session, import_job.STATUS_KEY,
+        json.dumps({"state": "running", "started_at": started.isoformat(), "heartbeat": beat.isoformat()}),
+    )
+    status = import_job.read_status(db_session)
+    assert status["state"] == "running"
+    assert 124 <= status["elapsed_seconds"] <= 130
+    assert 6 <= status["seconds_since_heartbeat"] <= 10
+    assert status["phases"] == ["nvd", "cisa_kev", "stats", "catalog"]
+
+
+def test_slow_but_alive_import_is_not_called_interrupted(db_session):
+    """Regression: another API process used to report "interrupted" after 3 minutes
+    without a progress report, although the import was still working."""
+    import json
+    from datetime import datetime, timedelta, timezone
+
+    started = datetime.now(timezone.utc) - timedelta(minutes=20)
+    beat = datetime.now(timezone.utc) - timedelta(seconds=40)
+    settings_service.set_value(
+        db_session, import_job.STATUS_KEY,
+        json.dumps({"state": "running", "started_at": started.isoformat(), "heartbeat": beat.isoformat()}),
+    )
+    assert import_job.read_status(db_session)["state"] == "running"
+
+
+def test_second_start_is_refused_while_another_process_imports(db_session, session_factory, monkeypatch):
+    monkeypatch.setattr(import_job, "run_import", lambda *a, **k: None)
+    _store_status(db_session)  # fresh heartbeat: a different process is working
+    assert import_job.start_in_background(session_factory, "recent", 7) is False
+    assert import_job._running is False
+
+
+def test_start_is_allowed_after_a_dead_import(db_session, session_factory, monkeypatch):
+    import json
+    import threading
+    from datetime import datetime, timedelta, timezone
+
+    done = threading.Event()
+    monkeypatch.setattr(import_job, "run_import", lambda *a, **k: done.set())
+    old = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
+    settings_service.set_value(
+        db_session, import_job.STATUS_KEY,
+        json.dumps({"state": "running", "started_at": old, "heartbeat": old}),
+    )
+    assert import_job.start_in_background(session_factory, "recent", 7) is True
+    assert done.wait(5)
+    for _ in range(100):  # the flag is reset right after the thread function returns
+        if not import_job._running:
+            break
+        threading.Event().wait(0.02)
+    assert import_job._running is False
+
+
+def test_cve_org_lookup_is_skipped_after_repeated_network_failures(monkeypatch):
+    """Without internet every lookup would cost 5 s; after 5 failures stop trying."""
+    import requests
+
+    from backend.services.nvd_complete_service import NVDCompleteService
+
+    calls, events = [], []
+
+    def broken_get(*args, **kwargs):
+        calls.append(args)
+        raise requests.exceptions.ConnectTimeout("no route")
+
+    monkeypatch.setattr("backend.services.nvd_complete_service.requests.get", broken_get)
+    nvd = NVDCompleteService(api_key="x")
+    nvd.event_callback = events.append
+    for i in range(20):
+        assert nvd._fetch_vendor_product_fallback(f"CVE-2026-{i:04d}") == {}
+    assert len(calls) == 5
+    assert len(events) == 1 and "cve.org" in events[0]
