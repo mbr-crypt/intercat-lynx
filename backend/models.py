@@ -991,6 +991,58 @@ class TechStackMatch(Base):
         return f"<TechStackMatch(package={self.package_name}, cve={self.vulnerability_id})>"
 
 
+class WatchedProduct(Base):
+    """
+    A product (or a whole vendor) a user wants to be told about.
+
+    ``vendor`` and ``product`` use the CPE spelling: lower case, underscores
+    instead of spaces (``fortinet`` / ``fortios``, ``microsoft`` /
+    ``windows_server_2022``). ``product`` is empty when the user follows every
+    product of the vendor.
+    """
+
+    __tablename__ = "watched_products"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    vendor = Column(String(255), nullable=False)
+    product = Column(String(255), nullable=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    user = relationship("User", backref="watched_products")
+
+    def __repr__(self):
+        return f"<WatchedProduct(user={self.user_id}, {self.vendor}:{self.product})>"
+
+
+class ProductCatalog(Base):
+    """
+    Every vendor/product pair that occurs in the CVE data, so users can search
+    and pick products instead of typing CPE names. Rebuilt from the CVE table
+    (after imports and once a day), see ``services/watchlist_service``.
+    """
+
+    __tablename__ = "product_catalog"
+
+    id = Column(Integer, primary_key=True, index=True)
+    vendor = Column(String(255), nullable=False, index=True)
+    product = Column(String(255), nullable=False, index=True)
+    cve_count = Column(Integer, nullable=False, default=0)
+
+    __table_args__ = (
+        Index("uq_product_catalog_pair", "vendor", "product", unique=True),
+    )
+
+    def __repr__(self):
+        return f"<ProductCatalog({self.vendor}:{self.product}, cves={self.cve_count})>"
+
+
 class PageView(Base):
     """
     Track page views for site analytics.
