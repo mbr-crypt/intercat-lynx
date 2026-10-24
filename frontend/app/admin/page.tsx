@@ -31,7 +31,7 @@ export default function AdminPage() {
       <div className="mx-auto max-w-2xl rounded-2xl bg-white p-8 text-center dark:bg-gray-800">
         <h1 className="text-xl font-semibold text-gray-900 dark:text-white">Kein Zugriff</h1>
         <p className="mt-2 text-gray-600 dark:text-gray-400">
-          Die Verwaltung ist Administratoren vorbehalten.
+          Die Administration ist Administratoren vorbehalten.
         </p>
       </div>
     );
@@ -49,9 +49,9 @@ export default function AdminPage() {
       <div>
         <p className="mb-2 flex items-center gap-3 text-xs font-semibold uppercase tracking-[0.15em] text-blue-600 dark:text-blue-400">
           <span className="h-px w-8 bg-gradient-to-r from-blue-600 to-blue-400" />
-          Administration
+          InterCat Lynx
         </p>
-        <h1 className="text-3xl font-semibold text-gray-900 dark:text-white">Benutzerverwaltung</h1>
+        <h1 className="text-3xl font-semibold text-gray-900 dark:text-white">Administration</h1>
       </div>
 
       <div role="tablist" className="flex gap-2">

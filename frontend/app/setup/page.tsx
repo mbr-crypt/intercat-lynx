@@ -581,9 +581,9 @@ function ImportStep({ call, onNext }: { call: Call; onNext: () => void }) {
                     <span className="ml-2 text-gray-500">{IMPORT_DAY_OPTIONS.find((o) => o.days === days)?.hint}</span></span>)}
               </span></label>
             <label className="flex items-start gap-2"><input type="radio" className="mt-1" checked={mode === 'full'} onChange={() => setMode('full')} />
-              <span><strong>Kompletter Bestand</strong> (rund 300.000 CVEs; gemessen etwa 160 CVEs pro Minute, das dauert über einen Tag)</span></label>
+              <span><strong>Kompletter Bestand</strong> (rund 300.000 CVEs; bisher gemessen etwa 160 CVEs pro Minute, das dauerte über einen Tag)</span></label>
             <label className="flex items-start gap-2"><input type="radio" className="mt-1" checked={mode === 'skip'} onChange={() => setMode('skip')} />
-              <span><strong>Überspringen</strong> (die geplanten Aufgaben holen danach nur neue Änderungen; mehr lässt sich später unter Verwaltung → Daten nachladen)</span></label>
+              <span><strong>Überspringen</strong> (die geplanten Aufgaben holen danach nur neue Änderungen; mehr lässt sich später unter Administration → Daten nachladen)</span></label>
           </div>
         )}
 

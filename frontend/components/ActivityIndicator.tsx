@@ -114,7 +114,7 @@ export function ActivityIndicator() {
             <ImportProgress status={importActivity} receivedAt={receivedAt} connectionLost={connectionLost} />
             <div className="mt-3 border-t border-gray-200 pt-3 text-sm dark:border-gray-700">
               <Link href="/admin?tab=data" onClick={close} className="text-blue-600 hover:underline dark:text-blue-400">
-                Zur Datenverwaltung
+                Zu Administration → Daten
               </Link>
             </div>
           </div>

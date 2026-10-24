@@ -11,6 +11,11 @@ Phases: NVD (the CVE database of the US NIST) -> CISA KEV (list of
 vulnerabilities that are being exploited right now) -> statistics -> product
 catalog.
 
+Resume: after every saved NVD page the job stores where it stands (the
+"checkpoint": time window and position in the list) in the status. If the import
+is interrupted or fails, ``can_resume`` is set and a new run can continue from
+there instead of starting at page 1.
+
 Live display: while the import runs, a second thread writes a heartbeat every
 few seconds. A status that has not received a heartbeat for HEARTBEAT_TIMEOUT
 belongs to a process that no longer exists and is shown as "interrupted". The
@@ -40,6 +45,10 @@ HEARTBEAT_TIMEOUT = timedelta(seconds=90)
 # Progress is written to the database at most this often (seconds)
 PROGRESS_WRITE_INTERVAL = 2.0
 LOG_LIMIT = 15
+# The remaining time is estimated only after this much work and time (before that
+# the rate is too uncertain)
+ETA_MIN_SECONDS = 30.0
+ETA_MIN_ITEMS = 50
 
 PHASES = ("nvd", "cisa_kev", "stats", "catalog")
 
@@ -91,7 +100,22 @@ def read_status(db: Session) -> dict:
     if beat and status.get("state") == "running":
         status["seconds_since_heartbeat"] = max(0, int((now - beat).total_seconds()))
     status["phases"] = list(PHASES)
+    # Also after the NVD phase: the last checkpoint then points to the end of the list
+    # and a resumed run goes straight on to the later phases
+    status["can_resume"] = bool(status.get("state") in ("interrupted", "error") and status.get("checkpoint"))
     return status
+
+
+def resume_point(db: Session) -> Optional[dict]:
+    """Mode, days and checkpoint of an interrupted import, or None."""
+    status = read_status(db)
+    if not status.get("can_resume"):
+        return None
+    return {
+        "mode": status.get("mode"),
+        "days": status.get("days") or 30,
+        "checkpoint": status["checkpoint"],
+    }
 
 
 class _Reporter:
@@ -107,6 +131,7 @@ class _Reporter:
         self._lock = threading.Lock()
         self._closed = False
         self._last_write = 0.0
+        self._eta_base: Optional[tuple] = None
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._status.setdefault("log", [])
@@ -129,6 +154,8 @@ class _Reporter:
     def update(self, **fields) -> None:
         """Change fields and write at once (phase changes, rare)."""
         with self._lock:
+            if "phase" in fields:
+                self._status.pop("eta_seconds", None)
             self._status.update(fields)
             if not self._closed:
                 self._flush()
@@ -139,7 +166,29 @@ class _Reporter:
             self._status["processed"], self._status["total"] = done, total
             if note:
                 self._status["detail"] = note
+            self._estimate(done, total)
             if not self._closed and time.monotonic() - self._last_write >= PROGRESS_WRITE_INTERVAL:
+                self._flush()
+
+    def _estimate(self, done: int, total: Optional[int]) -> None:
+        """Remaining time from the speed since this run began (called under the lock)."""
+        now = time.monotonic()
+        if self._eta_base is None or done < self._eta_base[1]:
+            self._eta_base = (now, done)
+            return
+        base_time, base_done = self._eta_base
+        if not total or done >= total:
+            self._status.pop("eta_seconds", None)
+            return
+        if now - base_time >= ETA_MIN_SECONDS and done - base_done >= ETA_MIN_ITEMS:
+            rate = (done - base_done) / (now - base_time)
+            self._status["eta_seconds"] = int((total - done) / rate)
+
+    def checkpoint(self, point: dict) -> None:
+        """Remember where to continue if this run is interrupted."""
+        with self._lock:
+            self._status["checkpoint"] = point
+            if not self._closed:
                 self._flush()
 
     def event(self, text: str) -> None:
@@ -182,19 +231,27 @@ def run_import(
     nvd_factory: Optional[Callable] = None,
     kev_factory: Optional[Callable] = None,
     stats_refresh: Optional[Callable[[Session], bool]] = None,
+    resume: Optional[dict] = None,
 ) -> dict:
-    """Synchronous import. Returns the final status (also persisted)."""
+    """Synchronous import. Returns the final status (also persisted).
+
+    ``resume`` is the checkpoint of an interrupted run; the NVD phase then
+    continues there.
+    """
     status = {
         "state": "running",
         "mode": mode,
         "days": days,
         "phase": "nvd",
-        "processed": 0,
+        "processed": (resume or {}).get("start_index", 0),
         "total": None,
         "started_at": _now().isoformat(),
         "message": "CVE-Daten werden von der NVD geladen",
         "log": [],
     }
+    if resume:
+        status["checkpoint"] = resume
+        status["resumed"] = True
     reporter = _Reporter(session_factory, status)
     reporter.write()
     reporter.start()
@@ -210,14 +267,17 @@ def run_import(
         if stats_refresh is None:
             from .stats_cache_service import refresh_stats_cache as stats_refresh
 
-        reporter.event("Import gestartet")
+        reporter.event("Import wird fortgesetzt" if resume else "Import gestartet")
         nvd = nvd_factory()
         nvd.progress_callback = reporter.progress
         nvd.event_callback = reporter.event
+        nvd.checkpoint_callback = reporter.checkpoint
+        extra = {"resume": resume} if resume else {}
         if mode == "full":
-            nvd.fetch_all_cves()
+            # No checkpoint file: the resume point lives in the status
+            nvd.fetch_all_cves(checkpoint_file=None, **extra)
         else:
-            nvd.fetch_recent_cves(days=days)
+            nvd.fetch_recent_cves(days=days, **extra)
 
         reporter.update(
             phase="cisa_kev",
@@ -227,9 +287,19 @@ def run_import(
         reporter.event("CVE-Daten geladen, CISA KEV wird abgefragt")
         db = session_factory()
         try:
-            kev_factory().update_exploited_vulnerabilities(db)
+            kev = kev_factory()
+            kev.event_callback = reporter.event
+            result = kev.update_exploited_vulnerabilities(db)
         finally:
             db.close()
+        if isinstance(result, dict):
+            if result.get("status") == "success":
+                reporter.event(
+                    f"CISA KEV: {result.get('updated', 0)} CVEs als aktiv ausgenutzt markiert, "
+                    f"davon {result.get('created', 0)} neu angelegt"
+                )
+            else:
+                reporter.event("CISA KEV konnte nicht abgefragt werden (nicht kritisch, die tägliche Aufgabe versucht es erneut)")
 
         reporter.update(phase="stats", message="Statistik wird berechnet")
         reporter.event("Statistik wird berechnet")
@@ -271,7 +341,12 @@ def run_import(
         )
 
 
-def start_in_background(session_factory: Callable[[], Session], mode: str, days: int) -> bool:
+def start_in_background(
+    session_factory: Callable[[], Session],
+    mode: str,
+    days: int,
+    resume: Optional[dict] = None,
+) -> bool:
     """Start the import thread. False if one is already running."""
     global _running
     with _lock:
@@ -293,7 +368,7 @@ def start_in_background(session_factory: Callable[[], Session], mode: str, days:
     def target():
         global _running
         try:
-            run_import(session_factory, mode, days)
+            run_import(session_factory, mode, days, resume=resume)
         finally:
             _running = False
 

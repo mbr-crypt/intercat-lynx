@@ -12,8 +12,10 @@ class TestCISAKEVService:
     
     @pytest.fixture
     def kev_service(self):
-        """Create KEV service instance."""
-        return CISAKEVService()
+        """Create KEV service instance (cve.org is never asked in tests)."""
+        service = CISAKEVService()
+        service.nvd_service._fetch_vendor_product_fallback = lambda cve_id: {}
+        return service
     
     @pytest.fixture
     def mock_nvd_response(self):
@@ -187,11 +189,29 @@ class TestCISAKEVService:
         mock_db.query.return_value = mock_query
         
         with patch.object(kev_service, 'fetch_kev_cves', return_value=mock_nvd_response["vulnerabilities"]):
-            result = kev_service.update_exploited_vulnerabilities(mock_db)
+            result = kev_service.update_exploited_vulnerabilities(mock_db, create_missing=False)
         
         assert result["status"] == "success"
         assert result["updated"] == 0
+        assert result["created"] == 0
         assert result["not_found"] == 2
+        mock_db.add.assert_not_called()
+
+    def test_update_exploited_vulnerabilities_creates_missing_cves(self, kev_service, mock_nvd_response):
+        """The KEV answer carries the full records, so unknown CVEs are created from it."""
+        mock_db = Mock()
+        mock_query = Mock()
+        mock_query.filter.return_value.first.return_value = None
+        mock_db.query.return_value = mock_query
+
+        with patch.object(kev_service, 'fetch_kev_cves', return_value=mock_nvd_response["vulnerabilities"]):
+            result = kev_service.update_exploited_vulnerabilities(mock_db)
+
+        assert result["created"] == 2 and result["updated"] == 2 and result["not_found"] == 2
+        created = [call.args[0] for call in mock_db.add.call_args_list]
+        assert {v.cve_id for v in created} == {"CVE-2024-1234", "CVE-2024-5678"}
+        assert all(v.exploited_in_the_wild is True for v in created)
+        assert all("cisa_kev" in v.sources and "nvd" in v.sources for v in created)
     
     def test_update_exploited_vulnerabilities_partial_success(self, kev_service, mock_nvd_response):
         """Test update with some CVEs found and some not found."""
@@ -213,7 +233,7 @@ class TestCISAKEVService:
         mock_db.query.return_value = mock_query
         
         with patch.object(kev_service, 'fetch_kev_cves', return_value=mock_nvd_response["vulnerabilities"]):
-            result = kev_service.update_exploited_vulnerabilities(mock_db)
+            result = kev_service.update_exploited_vulnerabilities(mock_db, create_missing=False)
         
         assert result["status"] == "success"
         assert result["updated"] == 1

@@ -10,11 +10,14 @@ This service handles:
 
 import logging
 import os
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 import requests
+from requests.adapters import HTTPAdapter
 from dotenv import load_dotenv
 from sqlalchemy.orm import Session
 
@@ -27,6 +30,18 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
+_UNSET = object()
+
+
+def _seconds(value: float) -> str:
+    """Duration for the event log, in German style ("4,1 s", "2 Min. 05 s")."""
+    if value >= 60:
+        whole = int(round(value))
+        return f"{whole // 60} Min. {whole % 60:02d} s"
+    if value >= 10:
+        return f"{int(round(value))} s"
+    return f"{value:.1f}".replace(".", ",") + " s"
+
 
 class NVDCompleteService:
     """Service for fetching complete CVE data from NVD API 2.0"""
@@ -35,6 +50,12 @@ class NVDCompleteService:
     CVE_ORG_URL = "https://cveawg.mitre.org/api/cve/"
     RESULTS_PER_PAGE = 2000  # NVD API max
     RATE_LIMIT_DELAY = 6  # seconds (10 requests per minute for no API key)
+    # cve.org (CVE Services) is asked for products of CVEs the NVD has not analysed
+    # yet. One request per CVE, so a page of 2000 CVEs may mean 2000 requests: they
+    # run in parallel (the NVD itself is never queried in parallel).
+    FALLBACK_WORKERS = 8
+    # Statistics are recalculated while importing at most this often (seconds)
+    STATS_REFRESH_INTERVAL = 600
 
     def __init__(self, api_key: Optional[str] = None):
         """
@@ -54,8 +75,18 @@ class NVDCompleteService:
         #   event_callback(text)  - one line for the visible event log
         self.progress_callback = None
         self.event_callback = None
+        #   checkpoint_callback(dict) - where to continue after an interruption
+        self.checkpoint_callback = None
         # cve.org lookups in a row that failed on the network (see fallback)
         self._fallback_errors = 0
+        self._fallback_lock = threading.Lock()
+        self._fallback_workers = self.FALLBACK_WORKERS
+        self._throttled = 0
+        # One session with a connection pool: no new TLS handshake per lookup
+        self._org_session = requests.Session()
+        adapter = HTTPAdapter(pool_connections=self.FALLBACK_WORKERS, pool_maxsize=self.FALLBACK_WORKERS)
+        self._org_session.mount("https://", adapter)
+        self._last_stats_refresh = time.monotonic()
 
         if self.api_key:
             self.session.headers.update({"apiKey": self.api_key})
@@ -78,7 +109,8 @@ class NVDCompleteService:
         self,
         start_year: int = 1999,
         end_year: Optional[int] = None,
-        checkpoint_file: str = "nvd_checkpoint.txt",
+        checkpoint_file: Optional[str] = "nvd_checkpoint.txt",
+        resume: Optional[Dict[str, Any]] = None,
     ) -> int:
         """
         Fetch all CVEs from NVD and store in database.
@@ -89,7 +121,10 @@ class NVDCompleteService:
         Args:
             start_year: Ignored (kept for compatibility)
             end_year: Ignored (kept for compatibility)
-            checkpoint_file: File to track progress for resume capability
+            checkpoint_file: File to track progress for resume capability (command
+                line use). The import job passes None and keeps the resume point
+                in its own status instead (``resume``).
+            resume: Resume point from ``checkpoint_callback`` of an earlier run
 
         Returns:
             Total number of CVEs processed
@@ -97,8 +132,11 @@ class NVDCompleteService:
         logger.info(f"Starting NVD complete fetch (all CVEs)")
         logger.info(f"Note: Fetching entire NVD database without date filtering")
 
-        # Check for checkpoint
-        start_index = self._load_checkpoint(checkpoint_file)
+        if resume:
+            start_index = int(resume.get("start_index", 0))
+            self._event(f"Import wird fortgesetzt (ab Eintrag {start_index:,})".replace(",", "."))
+        else:
+            start_index = self._load_checkpoint(checkpoint_file) if checkpoint_file else 0
 
         # Fetch all CVEs without date filtering
         total_processed = self._fetch_cves_by_date_range(
@@ -106,30 +144,42 @@ class NVDCompleteService:
         )
 
         # Clean up checkpoint file
-        if os.path.exists(checkpoint_file):
+        if checkpoint_file and os.path.exists(checkpoint_file):
             os.remove(checkpoint_file)
 
         logger.info(f"NVD complete fetch finished: {total_processed} total CVEs")
         return total_processed
 
-    def fetch_recent_cves(self, days: int = 7) -> int:
+    def fetch_recent_cves(self, days: int = 7, resume: Optional[Dict[str, Any]] = None) -> int:
         """
         Fetch CVEs modified in the last N days.
 
         Args:
             days: Number of days to look back
+            resume: Resume point from ``checkpoint_callback`` of an earlier run.
+                It keeps the time window of that run, so the same list of CVEs
+                is continued instead of a new one being started.
 
         Returns:
             Number of CVEs processed
         """
-        end_date = datetime.utcnow()
-        start_date = end_date - timedelta(days=days)
+        if resume:
+            mod_start, mod_end = resume["mod_start"], resume["mod_end"]
+            start_index = int(resume.get("start_index", 0))
+            self._event(f"Import wird fortgesetzt (ab Eintrag {start_index:,})".replace(",", "."))
+        else:
+            end_date = datetime.utcnow()
+            start_date = end_date - timedelta(days=days)
+            mod_start = start_date.strftime("%Y-%m-%dT%H:%M:%SZ")
+            mod_end = end_date.strftime("%Y-%m-%dT%H:%M:%SZ")
+            start_index = 0
 
         logger.info(f"Fetching CVEs modified in last {days} days")
 
         count = self._fetch_cves_by_date_range(
-            mod_start_date=start_date.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            mod_end_date=end_date.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            mod_start_date=mod_start,
+            mod_end_date=mod_end,
+            start_index=start_index,
         )
 
         logger.info(f"Recent CVEs fetch complete: {count} CVEs processed")
@@ -179,8 +229,20 @@ class NVDCompleteService:
                 mod_end_date = mod_end_date.replace(".000", "Z")
             params["lastModEndDate"] = mod_end_date
 
+        # What a resumed run needs to continue the same list
+        window = {}
+        if mod_start_date and mod_end_date:
+            window = {"mod_start": mod_start_date, "mod_end": mod_end_date}
+
         total_processed = 0
         consecutive_errors = 0
+        # The service object lives as long as the server process: every run
+        # starts with a clean slate (an earlier network problem must not switch
+        # the cve.org lookup off for good)
+        self._last_stats_refresh = time.monotonic()
+        self._fallback_errors = 0
+        self._throttled = 0
+        self._fallback_workers = self.FALLBACK_WORKERS
 
         while True:
             try:
@@ -192,11 +254,13 @@ class NVDCompleteService:
                 page = params["startIndex"] // self.RESULTS_PER_PAGE + 1
                 if page == 1 and not total_processed:
                     self._event("Erste Anfrage an die NVD läuft (kann bis zu einer Minute dauern)")
+                request_started = time.monotonic()
                 response = self.session.get(self.BASE_URL, params=params, timeout=30)
                 response.raise_for_status()
                 consecutive_errors = 0
 
                 data = response.json()
+                nvd_seconds = time.monotonic() - request_started
 
                 # Extract CVEs
                 vulnerabilities = data.get("vulnerabilities", [])
@@ -209,17 +273,28 @@ class NVDCompleteService:
                 pages = max(1, -(-total_results // self.RESULTS_PER_PAGE))
                 self._event(
                     f"Seite {page} von {pages}: {len(vulnerabilities)} CVEs empfangen "
-                    f"({total_results} insgesamt), werden gespeichert"
+                    f"({total_results} insgesamt, NVD antwortete in {_seconds(nvd_seconds)}), "
+                    "werden gespeichert"
                 )
 
                 # Process CVEs
                 db = next(get_db())
                 try:
+                    save_started = time.monotonic()
+                    existing_by_id = self._load_existing(db, vulnerabilities)
+                    lookups, lookup_count, lookup_seconds = self._prefetch_fallbacks(
+                        vulnerabilities, existing_by_id
+                    )
                     for number, vuln_data in enumerate(vulnerabilities, start=1):
-                        self._process_cve(db, vuln_data)
+                        cve_id = vuln_data.get("cve", {}).get("id")
+                        self._process_cve(
+                            db,
+                            vuln_data,
+                            existing=existing_by_id.get(cve_id),
+                            prefetched=lookups,
+                        )
                         total_processed += 1
-                        # Saving a page can take minutes (one extra request per
-                        # CVE without product data), so report in between
+                        # Saving a page takes a while, so report in between
                         if self.progress_callback and number % 25 == 0:
                             self.progress_callback(
                                 params["startIndex"] + number,
@@ -228,24 +303,41 @@ class NVDCompleteService:
                             )
 
                     db.commit()
+                    save_seconds = time.monotonic() - save_started
                     logger.info(
                         f"Processed {len(vulnerabilities)} CVEs (Total: {total_processed}/{total_results})"
                     )
+                    self._event(
+                        f"Seite {page} von {pages} gespeichert in {_seconds(save_seconds)}"
+                        + (
+                            f" (davon cve.org: {lookup_count} Abfragen in {_seconds(lookup_seconds)})"
+                            if lookup_count
+                            else " (keine cve.org-Abfragen nötig)"
+                        )
+                    )
 
-                    # Refresh stats cache after each batch
-                    self._event(f"Seite {page} von {pages} gespeichert, Statistik wird aktualisiert")
-                    refresh_stats_cache(db)
+                    # Statistics are expensive: not after every page
+                    if time.monotonic() - self._last_stats_refresh >= self.STATS_REFRESH_INTERVAL:
+                        self._event("Statistik wird zwischendurch aktualisiert")
+                        stats_started = time.monotonic()
+                        refresh_stats_cache(db)
+                        self._last_stats_refresh = time.monotonic()
+                        self._event(f"Statistik aktualisiert in {_seconds(time.monotonic() - stats_started)}")
 
                     if self.progress_callback:
                         self.progress_callback(
                             params["startIndex"] + len(vulnerabilities), total_results
                         )
 
-                    # Save checkpoint
+                    # Where to continue after an interruption
+                    next_index = params["startIndex"] + len(vulnerabilities)
+                    if self.checkpoint_callback:
+                        try:
+                            self.checkpoint_callback({**window, "start_index": next_index})
+                        except Exception:  # noqa: BLE001 - never fatal
+                            pass
                     if checkpoint_file:
-                        self._save_checkpoint(
-                            checkpoint_file, params["startIndex"] + len(vulnerabilities)
-                        )
+                        self._save_checkpoint(checkpoint_file, next_index)
 
                 except Exception as e:
                     db.rollback()
@@ -293,25 +385,110 @@ class NVDCompleteService:
 
         return total_processed
 
-    def _process_cve(self, db: Session, vuln_data: Dict[str, Any]) -> None:
+    # -- helpers for one page ---------------------------------------------------
+
+    @staticmethod
+    def _cve_ids(vulnerabilities: List[Dict[str, Any]]) -> List[str]:
+        ids = []
+        for vuln in vulnerabilities:
+            cve_id = vuln.get("cve", {}).get("id")
+            if cve_id and cve_id.startswith("CVE-"):
+                ids.append(cve_id)
+        return ids
+
+    def _load_existing(self, db: Session, vulnerabilities: List[Dict[str, Any]]) -> Dict[str, Vulnerability]:
+        """One query for the whole page instead of one per CVE."""
+        ids = self._cve_ids(vulnerabilities)
+        if not ids:
+            return {}
+        rows = db.query(Vulnerability).filter(Vulnerability.cve_id.in_(ids)).all()
+        return {row.cve_id: row for row in rows}
+
+    def _cpe_list(self, cve: Dict[str, Any]) -> List[str]:
+        cpe_list = []
+        for config in cve.get("configurations", []):
+            for node in config.get("nodes", []):
+                for cpe_match in node.get("cpeMatch", []):
+                    if cpe_match.get("vulnerable") and cpe_match.get("criteria"):
+                        cpe_list.append(cpe_match["criteria"])
+        return cpe_list
+
+    def _prefetch_fallbacks(
+        self,
+        vulnerabilities: List[Dict[str, Any]],
+        existing_by_id: Dict[str, Vulnerability],
+    ):
+        """Ask cve.org for the products of all CVEs of a page that need it, in parallel.
+
+        Needed are only CVEs for which the NVD names no product (analysis still
+        pending) and for which the database does not know one either. A CVE that
+        was imported before keeps its products, so a repeated import does not ask
+        again.
+
+        Returns (answers by CVE id, number of requests, seconds)
+        """
+        wanted = []
+        for vuln in vulnerabilities:
+            cve = vuln.get("cve", {})
+            cve_id = cve.get("id")
+            if not cve_id or not cve_id.startswith("CVE-"):
+                continue
+            if self._parse_cpe(self._cpe_list(cve)):
+                continue
+            known = existing_by_id.get(cve_id)
+            if known is not None and (known.vendors or known.products):
+                continue
+            wanted.append(cve_id)
+
+        if not wanted or self._fallback_errors >= 5:
+            return {}, 0, 0.0
+
+        started = time.monotonic()
+        throttled_before = self._throttled
+        workers = max(1, min(self._fallback_workers, len(wanted)))
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="lynx-cve-org") as pool:
+            answers = list(pool.map(self._fetch_vendor_product_fallback, wanted))
+        seconds = time.monotonic() - started
+
+        if self._throttled > throttled_before and self._fallback_workers > 1:
+            self._fallback_workers = max(1, self._fallback_workers // 2)
+            self._event(
+                "cve.org bremst die Abfragen, es geht mit weniger parallelen Abfragen weiter "
+                f"({self._fallback_workers})"
+            )
+        return dict(zip(wanted, answers)), len(wanted), seconds
+
+    def _process_cve(
+        self,
+        db: Session,
+        vuln_data: Dict[str, Any],
+        existing: Any = _UNSET,
+        prefetched: Optional[Dict[str, Dict[str, set]]] = None,
+    ) -> Optional[Vulnerability]:
         """
         Process a single CVE and store in database.
 
         Args:
             db: Database session
             vuln_data: CVE data from NVD API
+            existing: The row of this CVE if the caller already loaded it (None =
+                known to be new). Left out, the row is looked up here.
+            prefetched: cve.org answers the caller already collected in parallel
+
+        Returns:
+            The created or updated row (None if the entry was skipped)
         """
         cve = vuln_data.get("cve", {})
         cve_id = cve.get("id")
 
         if not cve_id:
             logger.warning("CVE without ID, skipping")
-            return
+            return None
 
         # Skip non-CVE entries (e.g., GHSA)
         if not cve_id.startswith("CVE-"):
             logger.debug(f"Skipping non-CVE entry: {cve_id}")
-            return
+            return None
 
         # Extract basic info
         published = cve.get("published")
@@ -380,21 +557,26 @@ class NVDCompleteService:
         for products in vendors_products.values():
             product_list.extend(products)
 
+        if existing is _UNSET:
+            existing = (
+                db.query(Vulnerability).filter(Vulnerability.cve_id == cve_id).first()
+            )
+
         # NVD hasn't finished CPE analysis yet for many freshly-published CVEs
         # (configurations is empty). Fall back to the CVE.org CVE Services API,
         # which exposes the CNA-reported vendor/product before NVD analysis
         # completes, so we don't end up with an empty vendor/product list.
-        if not vendor_list and not product_list:
-            fallback_vendors_products = self._fetch_vendor_product_fallback(cve_id)
+        # Not needed if the database already knows products of this CVE.
+        known_products = existing is not None and bool(existing.vendors or existing.products)
+        if not vendor_list and not product_list and not known_products:
+            if prefetched is not None and cve_id in prefetched:
+                fallback_vendors_products = prefetched[cve_id]
+            else:
+                fallback_vendors_products = self._fetch_vendor_product_fallback(cve_id)
             if fallback_vendors_products:
                 vendor_list = list(fallback_vendors_products.keys())
                 for products in fallback_vendors_products.values():
                     product_list.extend(products)
-
-        # Check if CVE exists
-        existing = (
-            db.query(Vulnerability).filter(Vulnerability.cve_id == cve_id).first()
-        )
 
         if existing:
             # Update existing - merge sources
@@ -455,6 +637,7 @@ class NVDCompleteService:
 
             existing.updated_at = datetime.utcnow()
             logger.debug(f"Updated existing CVE: {cve_id}")
+            return existing
 
         else:
             # Create new
@@ -482,6 +665,7 @@ class NVDCompleteService:
             )
             db.add(vulnerability)
             logger.debug(f"Created new CVE: {cve_id}")
+            return vulnerability
 
     def _parse_cpe(self, cpe_list: List[str]) -> Dict[str, set]:
         """
@@ -519,6 +703,8 @@ class NVDCompleteService:
         exposes the vendor/product the CNA reported at submission time, so it
         is usually available immediately.
 
+        May be called from several threads at once.
+
         Args:
             cve_id: CVE identifier (e.g. "CVE-2026-12345")
 
@@ -530,12 +716,22 @@ class NVDCompleteService:
         # lookup would wait for its 5 s timeout, one CVE after the other.
         # After 5 network failures in a row the lookup is skipped for the rest
         # of this run.
-        errors = getattr(self, "_fallback_errors", 0)
-        if errors >= 5:
+        if self._fallback_errors >= 5:
             return {}
         try:
-            response = requests.get(f"{self.CVE_ORG_URL}{cve_id}", timeout=5)
-            self._fallback_errors = 0
+            response = self._org_session.get(f"{self.CVE_ORG_URL}{cve_id}", timeout=5)
+            with self._fallback_lock:
+                self._fallback_errors = 0
+            if response.status_code == 429:
+                # Too many requests: wait a moment, the caller slows down afterwards
+                with self._fallback_lock:
+                    self._throttled += 1
+                try:
+                    wait = float(response.headers.get("Retry-After", 2))
+                except (TypeError, ValueError):
+                    wait = 2.0
+                time.sleep(min(max(wait, 0.0), 10.0))
+                return {}
             if response.status_code != 200:
                 return {}
 
@@ -557,8 +753,10 @@ class NVDCompleteService:
             return vendors_products
         except Exception as e:
             logger.debug(f"CVE.org fallback lookup failed for {cve_id}: {e}")
-            self._fallback_errors = errors + 1
-            if self._fallback_errors == 5:
+            with self._fallback_lock:
+                self._fallback_errors += 1
+                announce = self._fallback_errors == 5
+            if announce:
                 self._event(
                     "cve.org ist nicht erreichbar, die Zusatzabfrage der Produktdaten "
                     "wird für diesen Lauf übersprungen"

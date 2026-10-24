@@ -91,7 +91,7 @@ export const ROLE_LABEL: Record<Role, string> = {
 };
 
 export const ROLE_HELP: Record<Role, string> = {
-  admin: "Alles, inklusive Benutzerverwaltung",
+  admin: "Alles, inklusive Administration",
   analyst: "Lesen und Inhalte bearbeiten",
   viewer: "Nur lesen",
 };
@@ -132,6 +132,11 @@ export interface ImportStatus {
   log?: ActivityLogEntry[];
   elapsed_seconds?: number;
   seconds_since_heartbeat?: number;
+  /** Estimated remaining time, only after some work (see import_job._estimate) */
+  eta_seconds?: number;
+  /** An interrupted or failed import can continue where it stopped */
+  can_resume?: boolean;
+  resumed?: boolean;
   started_at?: string;
   finished_at?: string;
 }
