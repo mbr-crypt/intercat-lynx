@@ -5,12 +5,14 @@ Admin-only endpoints for system management.
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from ..database import get_db
+from ..database import SessionLocal, get_db
 from ..dependencies.auth import require_admin
 from ..models import User, Vulnerability
+from ..services import audit_service, import_job
 
 logger = logging.getLogger(__name__)
 
@@ -81,3 +83,64 @@ async def delete_vulnerability(
         "message": f"Vulnerability {cve_id} deleted successfully",
         "deleted_by": current_user.username,
     }
+
+
+# --------------------------------------------------------------------------
+# Background activity (what the system is doing right now)
+# --------------------------------------------------------------------------
+
+
+class ImportRequest(BaseModel):
+    mode: str = Field(..., pattern="^(recent|full)$")
+    days: int = Field(default=7, ge=1, le=120)
+
+
+def _import_title(state: dict) -> str:
+    if state.get("mode") == "full":
+        return "Datenimport, kompletter Bestand"
+    days = state.get("days")
+    return f"Datenimport, letzte {days} Tage" if days else "Datenimport"
+
+
+@router.get("/activity")
+async def get_activity(
+    current_user: User = Depends(require_admin), db: Session = Depends(get_db)
+):
+    """
+    What the system does in the background right now (Admin only).
+
+    Currently the data import. The list is built so that further tasks (scheduled
+    updates, mail and webhook delivery) can be added without changing the page.
+
+    **Requires:** Admin role
+    """
+    activities = []
+    state = import_job.read_status(db)
+    if state.get("state") != "idle":
+        activities.append({"id": "import", "title": _import_title(state), **state})
+    return {
+        "activities": activities,
+        "running": any(a["state"] == "running" for a in activities),
+    }
+
+
+@router.post("/import")
+async def start_import(
+    data: ImportRequest,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """
+    Start a data import from the NVD (Admin only), for example to fill up an
+    installation after the setup assistant is closed.
+
+    **Requires:** Admin role
+    """
+    if not import_job.start_in_background(SessionLocal, data.mode, data.days):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Ein Import läuft bereits"
+        )
+    audit_service.record(
+        db, current_user, audit_service.IMPORT_STARTED, detail=f"mode={data.mode} days={data.days}"
+    )
+    return {"started": True}

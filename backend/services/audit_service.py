@@ -26,6 +26,7 @@ USER_PASSWORD_RESET = "user.password_reset"
 USER_2FA_RESET = "user.2fa_reset"
 USER_SESSIONS_REVOKED = "user.sessions_revoked"
 SETTING_REGISTRATION = "setting.registration"
+IMPORT_STARTED = "import.started"
 
 
 def record(

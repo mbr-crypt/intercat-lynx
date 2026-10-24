@@ -108,9 +108,40 @@ export const AUDIT_LABEL: Record<string, string> = {
   "user.2fa_reset": "2FA zurückgesetzt",
   "user.sessions_revoked": "Überall abgemeldet",
   "setting.registration": "Registrierung umgestellt",
+  "import.started": "Datenimport gestartet",
 };
 
 export function formatDate(value: string | null): string {
   if (!value) return "nie";
   return new Date(value).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" });
+}
+
+/** Background activity (what the system does right now), see GET /admin/activity. */
+export interface ActivityLogEntry {
+  t: string;
+  text: string;
+}
+
+export interface ImportStatus {
+  state: "idle" | "running" | "done" | "error" | "interrupted";
+  phase?: string;
+  processed?: number;
+  total?: number | null;
+  message?: string;
+  detail?: string | null;
+  log?: ActivityLogEntry[];
+  elapsed_seconds?: number;
+  seconds_since_heartbeat?: number;
+  started_at?: string;
+  finished_at?: string;
+}
+
+export interface Activity extends ImportStatus {
+  id: string;
+  title: string;
+}
+
+export interface ActivityResponse {
+  activities: Activity[];
+  running: boolean;
 }

@@ -5,8 +5,9 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { UsersPanel } from "@/components/admin/UsersPanel";
 import { AuditPanel } from "@/components/admin/AuditPanel";
+import { ImportPanel } from "@/components/admin/ImportPanel";
 
-type Tab = "users" | "audit";
+type Tab = "users" | "audit" | "data";
 
 export default function AdminPage() {
   const { user, token, isLoading } = useAuth();
@@ -16,6 +17,12 @@ export default function AdminPage() {
   useEffect(() => {
     if (!isLoading && !user) router.push("/auth");
   }, [user, isLoading, router]);
+
+  // The activity icon in the header links to /admin?tab=data
+  useEffect(() => {
+    const wanted = new URLSearchParams(window.location.search).get("tab");
+    if (wanted === "data" || wanted === "audit" || wanted === "users") setTab(wanted);
+  }, []);
 
   if (isLoading || !user || !token) return null;
 
@@ -54,12 +61,17 @@ export default function AdminPage() {
         <button role="tab" aria-selected={tab === "audit"} className={tabClass("audit")} onClick={() => setTab("audit")}>
           Protokoll
         </button>
+        <button role="tab" aria-selected={tab === "data"} className={tabClass("data")} onClick={() => setTab("data")}>
+          Daten
+        </button>
       </div>
 
       {tab === "users" ? (
         <UsersPanel token={token} currentUserId={user.id} />
-      ) : (
+      ) : tab === "audit" ? (
         <AuditPanel token={token} />
+      ) : (
+        <ImportPanel token={token} />
       )}
     </div>
   );
