@@ -32,10 +32,12 @@ const config: Config = {
           100: "#dcecf8",
           200: "#b9d9f1",
           300: "#a6dbff",
-          400: "#7fcbff", // accent (Akzentblau)
-          500: "#2b7fc4",
-          600: "#2271b3", // brand blue (Markenblau, RAL 5015)
-          700: "#1d62a0", // brand blue dark
+          // 400 to 700 follow the accent colour of the instance (Einstellungen > Darstellung).
+          // The defaults are set in globals.css, so without a setting nothing changes.
+          400: "rgb(var(--blue-400) / <alpha-value>)", // accent (Akzentblau)
+          500: "rgb(var(--blue-500) / <alpha-value>)",
+          600: "rgb(var(--blue-600) / <alpha-value>)", // brand blue (Markenblau, RAL 5015)
+          700: "rgb(var(--blue-700) / <alpha-value>)", // brand blue dark
           800: "#184e80",
           900: "#14293a",
         },

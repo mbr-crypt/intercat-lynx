@@ -267,7 +267,7 @@ def run_import(
         if stats_refresh is None:
             from .stats_cache_service import refresh_stats_cache as stats_refresh
 
-        reporter.event("Import wird fortgesetzt" if resume else "Import gestartet")
+        reporter.event("Import gestartet (Fortsetzung)" if resume else "Import gestartet")
         nvd = nvd_factory()
         nvd.progress_callback = reporter.progress
         nvd.event_callback = reporter.event

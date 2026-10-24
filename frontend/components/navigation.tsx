@@ -5,7 +5,8 @@ import { usePathname } from "next/navigation";
 import { BarChart3, Info, Menu, X, Newspaper, TrendingUp, Layers, Crosshair } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LynxMark } from "./LynxMark";
-import { PRODUCT_NAME, SOURCE_URL } from "@/lib/branding";
+import { SOURCE_URL } from "@/lib/branding";
+import { useBrand } from "@/lib/brand-context";
 import UserMenu from "./user-menu";
 import { NotificationCenter } from "./NotificationCenter";
 import { ActivityIndicator } from "./ActivityIndicator";
@@ -14,6 +15,7 @@ import { useState } from "react";
 
 export function Navigation() {
   const pathname = usePathname();
+  const brand = useBrand();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const links = [
@@ -34,10 +36,30 @@ export function Navigation() {
           <div className="flex h-16 items-center justify-between">
             <div className="flex items-center space-x-8">
               <Link href="/" className="flex items-center space-x-2">
-                <LynxMark variant="mask" className="h-8 w-auto text-gray-900 dark:text-white" />
-                <span className="text-xl font-semibold tracking-tight text-gray-900 dark:text-white">
-                  {PRODUCT_NAME}
-                </span>
+                {brand.logo_light || brand.logo_dark ? (
+                  <>
+                    {/* Own logo of the instance: it replaces mark and name */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={brand.logo_dark ?? brand.logo_light!}
+                      alt={brand.name}
+                      className="hidden h-8 w-auto max-w-[12rem] object-contain object-left dark:block"
+                    />
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={brand.logo_light ?? brand.logo_dark!}
+                      alt={brand.name}
+                      className="h-8 w-auto max-w-[12rem] object-contain object-left dark:hidden"
+                    />
+                  </>
+                ) : (
+                  <>
+                    <LynxMark variant="mask" className="h-8 w-auto text-gray-900 dark:text-white" />
+                    <span className="text-xl font-semibold tracking-tight text-gray-900 dark:text-white">
+                      {brand.name}
+                    </span>
+                  </>
+                )}
               </Link>
 
               {/* Desktop Navigation */}
