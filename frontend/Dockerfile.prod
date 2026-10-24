@@ -29,6 +29,8 @@ WORKDIR /app
 
 # Copy built application
 COPY --from=builder /app/.next ./.next
+# Static files (logo etc.): Next.js serves them from public/, so the folder must be in the final image
+COPY --from=builder /app/public ./public
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
 

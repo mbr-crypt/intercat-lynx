@@ -17,11 +17,11 @@ export const IMPORT_PHASES: { id: string; label: string }[] = [
   { id: "catalog", label: "Produktkatalog aufbauen" },
 ];
 
-/** Time spans offered for "recent" imports, with what to expect (measured on the VM test: ~160 CVEs/min). */
+/** Time spans offered for "recent" imports, with what to expect (measured on the VM: 1 day ≈ 1 min, 7 days ≈ 5 min). */
 export const IMPORT_DAY_OPTIONS: { days: number; hint: string }[] = [
-  { days: 1, hint: "wenige hundert bis tausend CVEs, einige Minuten" },
-  { days: 7, hint: "etwa 25.000 CVEs, bisher gemessen rund 2,5 Stunden" },
-  { days: 30, hint: "etwa 50.000 CVEs, mehrere Stunden" },
+  { days: 1, hint: "einige tausend CVEs, gemessen rund 1 Minute" },
+  { days: 7, hint: "etwa 25.000 CVEs, gemessen rund 5 Minuten" },
+  { days: 30, hint: "etwa 50.000 CVEs, geschätzt rund 10 Minuten (noch nicht gemessen)" },
   { days: 120, hint: "sehr viele, nur wenn nötig" },
 ];
 
@@ -39,9 +39,11 @@ interface Props {
   receivedAt: number;
   /** The server did not answer the last few requests */
   connectionLost?: boolean;
+  /** The server answered "too many requests" (HTTP 429) */
+  rateLimited?: boolean;
 }
 
-export function ImportProgress({ status, receivedAt, connectionLost = false }: Props) {
+export function ImportProgress({ status, receivedAt, connectionLost = false, rateLimited = false }: Props) {
   const [, setTick] = useState(0);
   const running = status.state === "running";
 
@@ -118,6 +120,12 @@ export function ImportProgress({ status, receivedAt, connectionLost = false }: P
               {" – "}
               <strong>{(status.processed || 0).toLocaleString("de-DE")}</strong> von{" "}
               {status.total?.toLocaleString("de-DE")} CVEs ({pct} %)
+              {status.eta_seconds !== undefined && (
+                <>
+                  {" · "}
+                  <strong>noch etwa {formatDuration(Math.max(0, status.eta_seconds - sincePoll))}</strong>
+                </>
+              )}
             </>
           )}
         </p>
@@ -127,23 +135,28 @@ export function ImportProgress({ status, receivedAt, connectionLost = false }: P
       {running && (
         <p className="text-xs text-gray-500">
           Laufzeit {formatDuration(elapsed)}
-          {status.eta_seconds !== undefined && status.phase === "nvd" && (
-            <> · noch etwa {formatDuration(Math.max(0, status.eta_seconds - sincePoll))} (grobe Schätzung)</>
-          )}
+          {status.eta_seconds !== undefined && determinate && <> · Restzeit ist eine grobe Schätzung</>}
           {" · "}letzte Rückmeldung des Servers vor {formatDuration(silent)}
         </p>
       )}
       {!running && status.elapsed_seconds !== undefined && status.state !== "idle" && (
         <p className="text-xs text-gray-500">Laufzeit {formatDuration(status.elapsed_seconds)}</p>
       )}
-      {running && silent > 30 && !connectionLost && (
+      {running && silent > 30 && !connectionLost && !rateLimited && (
         <p className="text-sm text-amber-700 dark:text-amber-400" role="alert">
           <AlertTriangle className="mr-1 inline h-4 w-4" aria-hidden />
           Seit {formatDuration(silent)} keine Rückmeldung vom Import. Das kann bei sehr langsamer Verbindung zur NVD
           vorkommen. Nach 90 Sekunden ohne Rückmeldung gilt der Import als abgebrochen und kann neu gestartet werden.
         </p>
       )}
-      {running && connectionLost && (
+      {running && rateLimited && (
+        <p className="text-sm text-amber-700 dark:text-amber-400" role="alert">
+          <AlertTriangle className="mr-1 inline h-4 w-4" aria-hidden />
+          Der Server hat die Abfragen dieser Adresse kurz begrenzt („zu viele Anfragen“). Der Import läuft weiter, die
+          Anzeige fragt langsamer nach und aktualisiert sich gleich wieder.
+        </p>
+      )}
+      {running && connectionLost && !rateLimited && (
         <p className="text-sm text-amber-700 dark:text-amber-400" role="alert">
           <AlertTriangle className="mr-1 inline h-4 w-4" aria-hidden />
           Der Server antwortet gerade nicht. Der Import läuft möglicherweise weiter, diese Seite versucht es automatisch
