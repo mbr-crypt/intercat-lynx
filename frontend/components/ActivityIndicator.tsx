@@ -38,7 +38,10 @@ export function ActivityIndicator() {
   const isAdmin = isAuthenticated && user?.role === "admin";
   const [open, setOpen] = useState(false);
   const [seen, setSeen] = useState<string | null>(null);
-  const { importActivity, running, connectionLost, receivedAt } = useActivity(token, !!isAdmin, open);
+  const { importActivity, running, connectionLost, rateLimited, receivedAt, boost } = useActivity(token, !!isAdmin);
+  useEffect(() => {
+    if (open) boost();
+  }, [open, boost]);
 
   useEffect(() => setSeen(readSeen()), []);
 
@@ -111,7 +114,7 @@ export function ActivityIndicator() {
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <ImportProgress status={importActivity} receivedAt={receivedAt} connectionLost={connectionLost} />
+            <ImportProgress status={importActivity} receivedAt={receivedAt} connectionLost={connectionLost} rateLimited={rateLimited} />
             <div className="mt-3 border-t border-gray-200 pt-3 text-sm dark:border-gray-700">
               <Link href="/admin?tab=data" onClick={close} className="text-blue-600 hover:underline dark:text-blue-400">
                 Zu Administration → Daten

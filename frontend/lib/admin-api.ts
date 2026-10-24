@@ -52,6 +52,17 @@ function messageOf(body: any, fallback: string): string {
   return fallback;
 }
 
+/** An error answer of the API with its HTTP status (429 = too many requests). */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly retryAfter?: number
+  ) {
+    super(message);
+  }
+}
+
 export async function adminFetch<T>(
   token: string,
   path: string,
@@ -67,7 +78,8 @@ export async function adminFetch<T>(
   });
   const body = await response.json().catch(() => null);
   if (!response.ok) {
-    throw new Error(messageOf(body, `Fehler ${response.status}`));
+    const retryAfter = Number(response.headers.get("Retry-After")) || undefined;
+    throw new ApiError(messageOf(body, `Fehler ${response.status}`), response.status, retryAfter);
   }
   return body as T;
 }
