@@ -93,6 +93,8 @@ async def delete_vulnerability(
 class ImportRequest(BaseModel):
     mode: str = Field(..., pattern="^(recent|full)$")
     days: int = Field(default=7, ge=1, le=120)
+    # Continue an interrupted import where it stopped (mode and days then come from it)
+    resume: bool = False
 
 
 def _import_title(state: dict) -> str:
@@ -136,11 +138,23 @@ async def start_import(
 
     **Requires:** Admin role
     """
-    if not import_job.start_in_background(SessionLocal, data.mode, data.days):
+    mode, days, checkpoint = data.mode, data.days, None
+    if data.resume:
+        point = import_job.resume_point(db)
+        if point is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Es gibt keinen unterbrochenen Import zum Fortsetzen",
+            )
+        mode, days, checkpoint = point["mode"], point["days"], point["checkpoint"]
+    if not import_job.start_in_background(SessionLocal, mode, days, resume=checkpoint):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="Ein Import läuft bereits"
         )
     audit_service.record(
-        db, current_user, audit_service.IMPORT_STARTED, detail=f"mode={data.mode} days={data.days}"
+        db,
+        current_user,
+        audit_service.IMPORT_STARTED,
+        detail=f"mode={mode} days={days}" + (" resumed" if checkpoint else ""),
     )
     return {"started": True}

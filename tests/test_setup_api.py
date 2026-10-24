@@ -167,12 +167,12 @@ def test_announce_closes_setup_on_installs_that_already_have_an_admin(db_session
 class FakeNVD:
     progress_callback = None
 
-    def fetch_recent_cves(self, days):
+    def fetch_recent_cves(self, days, **kw):
         self.progress_callback(2000, 6000)
         self.progress_callback(6000, 6000)
         return 6000
 
-    def fetch_all_cves(self):
+    def fetch_all_cves(self, **kw):
         raise RuntimeError("no internet")
 
 
@@ -238,7 +238,7 @@ def test_import_job_keeps_a_heartbeat_while_nothing_else_happens(db_session, ses
         progress_callback = None
         event_callback = None
 
-        def fetch_recent_cves(self, days):
+        def fetch_recent_cves(self, days, **kw):
             self.event_callback("Erste Anfrage an die NVD läuft")
             for _ in range(2):
                 time.sleep(0.3)
@@ -265,7 +265,7 @@ def test_import_job_event_log_is_limited_and_carries_the_latest_detail(db_sessio
         progress_callback = None
         event_callback = None
 
-        def fetch_recent_cves(self, days):
+        def fetch_recent_cves(self, days, **kw):
             for i in range(40):
                 self.event_callback(f"Ereignis {i}")
             self.progress_callback(5, 10, "Seite 1 von 1: 5 von 10 gespeichert")
@@ -351,8 +351,8 @@ def test_cve_org_lookup_is_skipped_after_repeated_network_failures(monkeypatch):
         calls.append(args)
         raise requests.exceptions.ConnectTimeout("no route")
 
-    monkeypatch.setattr("backend.services.nvd_complete_service.requests.get", broken_get)
     nvd = NVDCompleteService(api_key="x")
+    monkeypatch.setattr(nvd._org_session, "get", broken_get)
     nvd.event_callback = events.append
     for i in range(20):
         assert nvd._fetch_vendor_product_fallback(f"CVE-2026-{i:04d}") == {}
@@ -421,7 +421,7 @@ def test_admin_can_start_an_import_and_it_is_logged(client, db_session, session_
 
     started = []
     monkeypatch.setattr(
-        import_job, "start_in_background", lambda factory, mode, days: started.append((mode, days)) or True
+        import_job, "start_in_background", lambda factory, mode, days, resume=None: started.append((mode, days)) or True
     )
     token = _admin_token(client, db_session)
     r = client.post("/api/v1/admin/import", json={"mode": "recent", "days": 14}, headers=auth(token))
@@ -432,7 +432,7 @@ def test_admin_can_start_an_import_and_it_is_logged(client, db_session, session_
 
 
 def test_second_import_start_is_refused_with_409(client, db_session, monkeypatch):
-    monkeypatch.setattr(import_job, "start_in_background", lambda *a: False)
+    monkeypatch.setattr(import_job, "start_in_background", lambda *a, **k: False)
     token = _admin_token(client, db_session)
     r = client.post("/api/v1/admin/import", json={"mode": "full"}, headers=auth(token))
     assert r.status_code == 409
@@ -443,3 +443,290 @@ def test_import_request_is_validated(client, db_session, monkeypatch, body):
     monkeypatch.setattr(import_job, "start_in_background", lambda *a: True)
     token = _admin_token(client, db_session)
     assert client.post("/api/v1/admin/import", json=body, headers=auth(token)).status_code == 422
+
+
+# --- import speed: cve.org lookups, timings, estimate, resume ---------------------
+
+
+def _nvd_record(cve_id, with_cpe=False):
+    cve = {
+        "id": cve_id,  # no dates: the in-memory SQLite test database does not accept ISO strings
+        "descriptions": [{"lang": "en", "value": "x"}],
+        "metrics": {},
+    }
+    if with_cpe:
+        cve["configurations"] = [
+            {"nodes": [{"cpeMatch": [{"vulnerable": True, "criteria": "cpe:2.3:a:acme:widget:1.0:*:*:*:*:*:*:*"}]}]}
+        ]
+    return {"cve": cve}
+
+
+def _nvd_with_pages(monkeypatch, db_session, pages, lookup=None):
+    """An NVD service whose API answers are `pages` and whose database is the test database."""
+    from backend.services import nvd_complete_service as module
+
+    monkeypatch.setattr(module, "get_db", lambda: iter([db_session]))
+    monkeypatch.setattr(module.time, "sleep", lambda s: None)
+    monkeypatch.setattr(module, "refresh_stats_cache", lambda db: None)
+    nvd = module.NVDCompleteService(api_key="x")
+    nvd.RESULTS_PER_PAGE = 2
+    answers = iter(pages)
+    requested = []
+
+    class Response:
+        def __init__(self, body):
+            self.body = body
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return self.body
+
+    def get(url, params=None, timeout=None):
+        requested.append(dict(params))
+        return Response(next(answers))
+
+    monkeypatch.setattr(nvd.session, "get", get)
+    asked = []
+
+    def fallback(cve_id):
+        asked.append(cve_id)
+        return (lookup or {}).get(cve_id, {})
+
+    nvd._fetch_vendor_product_fallback = fallback
+    nvd.events = []
+    nvd.event_callback = nvd.events.append
+    return nvd, requested, asked
+
+
+def test_cve_org_is_asked_only_for_cves_without_known_products(monkeypatch, db_session):
+    from backend.models import Vulnerability
+
+    db_session.add(
+        Vulnerability(cve_id="CVE-2026-0002", title="t", vendors=["acme"], products=["widget"], sources=["nvd"])
+    )
+    db_session.commit()
+    page = {
+        "totalResults": 4,
+        "vulnerabilities": [
+            _nvd_record("CVE-2026-0001"),  # new, no product known: ask
+            _nvd_record("CVE-2026-0002"),  # already stored with products: do not ask
+            _nvd_record("CVE-2026-0003", with_cpe=True),  # NVD names a product: do not ask
+            _nvd_record("CVE-2026-0004"),  # new, no product known: ask
+        ],
+    }
+    nvd, _, asked = _nvd_with_pages(
+        monkeypatch, db_session, [page], lookup={"CVE-2026-0001": {"Acme": {"Widget"}}}
+    )
+    nvd.RESULTS_PER_PAGE = 4
+    assert nvd.fetch_recent_cves(days=1) == 4
+    assert sorted(asked) == ["CVE-2026-0001", "CVE-2026-0004"]
+    stored = db_session.query(Vulnerability).filter_by(cve_id="CVE-2026-0001").one()
+    assert stored.vendors == ["Acme"] and stored.products == ["Widget"]
+    kept = db_session.query(Vulnerability).filter_by(cve_id="CVE-2026-0002").one()
+    assert kept.products == ["widget"]  # the stored product survived without a new lookup
+
+
+def test_cve_org_lookups_run_in_parallel(monkeypatch, db_session):
+    import threading
+    import time as real_time
+
+    nvd, _, _ = _nvd_with_pages(monkeypatch, db_session, [])
+    seen, lock = set(), threading.Lock()
+
+    def slow(cve_id):
+        with lock:
+            seen.add(threading.current_thread().name)
+        real_time.sleep(0.05)
+        return {}
+
+    nvd._fetch_vendor_product_fallback = slow
+    records = [_nvd_record(f"CVE-2026-{i:04d}") for i in range(1, 17)]
+    started = real_time.monotonic()
+    answers, count, seconds = nvd._prefetch_fallbacks(records, {})
+    took = real_time.monotonic() - started
+    assert count == 16 and len(answers) == 16
+    assert len(seen) > 1  # several workers
+    assert took < 16 * 0.05 * 0.6  # clearly faster than one after the other
+
+
+def test_page_events_show_where_the_time_goes(monkeypatch, db_session):
+    page = {"totalResults": 2, "vulnerabilities": [_nvd_record("CVE-2026-0001"), _nvd_record("CVE-2026-0002")]}
+    nvd, _, _ = _nvd_with_pages(monkeypatch, db_session, [page])
+    nvd.fetch_recent_cves(days=1)
+    text = " | ".join(nvd.events)
+    assert "NVD antwortete in" in text
+    assert "gespeichert in" in text and "cve.org: 2 Abfragen" in text
+
+
+def test_statistics_are_not_recalculated_after_every_page(monkeypatch, db_session):
+    from backend.services import nvd_complete_service as module
+
+    pages = [
+        {"totalResults": 4, "vulnerabilities": [_nvd_record("CVE-2026-0001", True), _nvd_record("CVE-2026-0002", True)]},
+        {"totalResults": 4, "vulnerabilities": [_nvd_record("CVE-2026-0003", True), _nvd_record("CVE-2026-0004", True)]},
+    ]
+    nvd, _, _ = _nvd_with_pages(monkeypatch, db_session, pages)
+    calls = []
+    monkeypatch.setattr(module, "refresh_stats_cache", lambda db: calls.append(1))
+    nvd.fetch_recent_cves(days=1)
+    assert len(calls) == 1  # only the final one, not one per page
+
+
+def test_resume_point_is_reported_after_each_page_and_used_again(monkeypatch, db_session):
+    pages = [
+        {"totalResults": 4, "vulnerabilities": [_nvd_record("CVE-2026-0001", True), _nvd_record("CVE-2026-0002", True)]},
+        {"totalResults": 4, "vulnerabilities": [_nvd_record("CVE-2026-0003", True), _nvd_record("CVE-2026-0004", True)]},
+    ]
+    nvd, requested, _ = _nvd_with_pages(monkeypatch, db_session, pages)
+    points = []
+    nvd.checkpoint_callback = points.append
+    nvd.fetch_recent_cves(days=1)
+    assert [p["start_index"] for p in points] == [2, 4]
+    assert points[0]["mod_start"] == requested[0]["lastModStartDate"]
+
+    # a new run continues with the same time window and position
+    nvd2, requested2, _ = _nvd_with_pages(monkeypatch, db_session, [pages[1]])
+    nvd2.fetch_recent_cves(days=1, resume=points[0])
+    assert requested2[0]["startIndex"] == 2
+    assert requested2[0]["lastModStartDate"] == points[0]["mod_start"]
+    assert requested2[0]["lastModEndDate"] == points[0]["mod_end"]
+
+
+def test_cve_org_lookup_is_switched_on_again_for_a_new_run(monkeypatch, db_session):
+    nvd, _, _ = _nvd_with_pages(monkeypatch, db_session, [{"totalResults": 0, "vulnerabilities": []}])
+    nvd._fallback_errors = 5  # an earlier run saw network problems
+    nvd.fetch_recent_cves(days=1)
+    assert nvd._fallback_errors == 0
+
+
+def test_throttled_cve_org_reduces_the_parallel_requests(monkeypatch, db_session):
+    nvd, _, _ = _nvd_with_pages(monkeypatch, db_session, [])
+
+    def throttled(cve_id):
+        nvd._throttled += 1
+        return {}
+
+    nvd._fetch_vendor_product_fallback = throttled
+    nvd._prefetch_fallbacks([_nvd_record("CVE-2026-0001")], {})
+    assert nvd._fallback_workers == nvd.FALLBACK_WORKERS // 2
+    assert any("bremst" in e for e in nvd.events)
+
+
+def test_eta_is_computed_from_speed_and_dropped_when_the_phase_changes(db_session, session_factory, monkeypatch):
+    monkeypatch.setattr(import_job, "ETA_MIN_SECONDS", 30.0)
+    monkeypatch.setattr(import_job, "ETA_MIN_ITEMS", 50)
+    now = {"t": 0.0}
+    monkeypatch.setattr(import_job.time, "monotonic", lambda: now["t"])
+    reporter = import_job._Reporter(session_factory, {"state": "running"})
+    reporter.progress(100, 1100)  # baseline
+    now["t"] = 10.0
+    reporter.progress(200, 1100)
+    assert "eta_seconds" not in reporter._status  # too early to say
+    now["t"] = 40.0
+    reporter.progress(400, 1100)  # 300 items in 40 s = 7.5/s, 700 left -> ~93 s
+    assert 90 <= reporter._status["eta_seconds"] <= 96
+    reporter.update(phase="cisa_kev")
+    assert "eta_seconds" not in reporter._status
+
+
+def test_interrupted_import_can_be_resumed_where_it_stopped(db_session, session_factory):
+    import json
+    from datetime import datetime, timedelta, timezone
+
+    class StoppingNVD:
+        progress_callback = event_callback = checkpoint_callback = None
+
+        def fetch_recent_cves(self, days, **kw):
+            self.checkpoint_callback({"mod_start": "A", "mod_end": "B", "start_index": 2000})
+            raise RuntimeError("Verbindung weg")
+
+    import_job.run_import(
+        session_factory, "recent", 7, nvd_factory=StoppingNVD, kev_factory=FakeKEV, stats_refresh=lambda db: True
+    )
+    status = import_job.read_status(db_session)
+    assert status["state"] == "error" and status["can_resume"] is True
+    point = import_job.resume_point(db_session)
+    assert point == {"mode": "recent", "days": 7, "checkpoint": {"mod_start": "A", "mod_end": "B", "start_index": 2000}}
+
+    received = {}
+
+    class ContinuingNVD:
+        progress_callback = event_callback = checkpoint_callback = None
+
+        def fetch_recent_cves(self, days, resume=None):
+            received["resume"] = resume
+            return 1
+
+    final = import_job.run_import(
+        session_factory, "recent", 7, nvd_factory=ContinuingNVD, kev_factory=FakeKEV,
+        stats_refresh=lambda db: True, resume=point["checkpoint"],
+    )
+    assert received["resume"] == point["checkpoint"]
+    assert final["state"] == "done" and final.get("resumed") is True
+    db_session.expire_all()
+    assert import_job.read_status(db_session)["can_resume"] is False  # finished: nothing to resume
+
+    # a finished or never started import offers nothing to resume
+    assert import_job.resume_point(db_session) is None
+
+
+def test_full_import_does_not_use_a_checkpoint_file(db_session, session_factory):
+    seen = {}
+
+    class FullNVD:
+        progress_callback = event_callback = checkpoint_callback = None
+
+        def fetch_all_cves(self, **kw):
+            seen.update(kw)
+            return 1
+
+    import_job.run_import(
+        session_factory, "full", 30, nvd_factory=FullNVD, kev_factory=FakeKEV, stats_refresh=lambda db: True
+    )
+    assert seen == {"checkpoint_file": None}  # a stale file must not silently resume a new run
+
+
+def test_kev_result_is_written_to_the_event_log(db_session, session_factory):
+    class ReportingKEV:
+        event_callback = None
+
+        def update_exploited_vulnerabilities(self, db):
+            return {"status": "success", "updated": 1700, "created": 1640, "not_found": 1640}
+
+    status = import_job.run_import(
+        session_factory, "recent", 1, nvd_factory=FakeNVD, kev_factory=ReportingKEV, stats_refresh=lambda db: True
+    )
+    assert any("1700" in e["text"] and "1640 neu angelegt" in e["text"] for e in status["log"])
+
+
+def test_admin_can_resume_an_interrupted_import(client, db_session, session_factory, monkeypatch):
+    import json
+    from datetime import datetime, timedelta, timezone
+
+    token = _admin_token(client, db_session)
+    monkeypatch.setattr(import_job, "run_import", lambda *a, **k: None)
+    # nothing to resume yet
+    r = client.post("/api/v1/admin/import", json={"mode": "recent", "resume": True}, headers=auth(token))
+    assert r.status_code == 409
+
+    old = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
+    settings_service.set_value(
+        db_session, import_job.STATUS_KEY,
+        json.dumps({
+            "state": "running", "mode": "full", "days": 30, "phase": "nvd", "started_at": old, "heartbeat": old,
+            "checkpoint": {"start_index": 4000},
+        }),
+    )
+    activity = client.get("/api/v1/admin/activity", headers=auth(token)).json()["activities"][0]
+    assert activity["state"] == "interrupted" and activity["can_resume"] is True
+
+    started = {}
+    monkeypatch.setattr(
+        "backend.api.admin.import_job.start_in_background",
+        lambda factory, mode, days, resume=None: started.update(mode=mode, days=days, resume=resume) or True,
+    )
+    r = client.post("/api/v1/admin/import", json={"mode": "recent", "resume": True}, headers=auth(token))
+    assert r.status_code == 200
+    assert started == {"mode": "full", "days": 30, "resume": {"start_index": 4000}}  # taken from the old run

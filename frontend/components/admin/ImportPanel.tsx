@@ -16,11 +16,13 @@ export function ImportPanel({ token }: { token: string }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const start = async () => {
+  const canResume = !running && importActivity?.can_resume === true;
+
+  const start = async (resume = false) => {
     setError("");
     setBusy(true);
     try {
-      await adminFetch(token, "/import", { method: "POST", body: { mode, days } });
+      await adminFetch(token, "/import", { method: "POST", body: { mode, days, resume } });
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Import konnte nicht gestartet werden");
@@ -38,7 +40,7 @@ export function ImportPanel({ token }: { token: string }) {
         <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
           Lädt CVEs von der NVD und gleicht die aktiv ausgenutzten (CISA KEV) ab. Gezählt werden alle CVEs, die im
           Zeitraum <strong>geändert</strong> wurden, nicht nur neue. Bereits vorhandene werden aktualisiert. Läuft der
-          Server dabei neu, bricht der Import ab und kann neu gestartet werden.
+          Server dabei neu, bricht der Import ab und kann dort fortgesetzt werden, wo er aufgehört hat.
         </p>
 
         <fieldset className="mt-4 space-y-3 text-sm" disabled={running || busy}>
@@ -68,8 +70,8 @@ export function ImportPanel({ token }: { token: string }) {
           <label className="flex items-start gap-2">
             <input type="radio" className="mt-1" checked={mode === "full"} onChange={() => setMode("full")} />
             <span>
-              <strong>Kompletter Bestand</strong> (rund 300.000 CVEs). Gemessen laufen etwa 160 CVEs pro Minute, das
-              dauert deshalb über einen Tag.
+              <strong>Kompletter Bestand</strong> (rund 300.000 CVEs). Bisher gemessen liefen etwa 160 CVEs pro
+              Minute, das dauerte über einen Tag. Nach der Beschleunigung wird neu gemessen.
             </span>
           </label>
         </fieldset>
@@ -79,13 +81,28 @@ export function ImportPanel({ token }: { token: string }) {
             {error}
           </p>
         )}
-        <button
-          onClick={start}
-          disabled={running || busy}
-          className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-        >
-          {running ? "Import läuft" : "Import starten"}
-        </button>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {canResume && (
+            <button
+              onClick={() => start(true)}
+              disabled={busy}
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              Unterbrochenen Import fortsetzen
+            </button>
+          )}
+          <button
+            onClick={() => start(false)}
+            disabled={running || busy}
+            className={
+              canResume
+                ? "rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+                : "rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            }
+          >
+            {running ? "Import läuft" : canResume ? "Neu von vorn starten" : "Import starten"}
+          </button>
+        </div>
       </section>
 
       {importActivity && (

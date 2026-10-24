@@ -27,6 +27,16 @@ class CISAKEVService:
 
     def __init__(self):
         self.nvd_service = NVDCompleteService()
+        #   event_callback(text) - one line for the visible event log of the import
+        self.event_callback = None
+
+    def _event(self, text: str) -> None:
+        logger.info(text)
+        if self.event_callback:
+            try:
+                self.event_callback(text)
+            except Exception:  # noqa: BLE001 - best effort
+                pass
 
     def fetch_kev_cves(self) -> List[Dict]:
         """
@@ -43,8 +53,10 @@ class CISAKEVService:
             "User-Agent": "InterCat-Lynx/0.1 (fork of OpenThreat; vulnerability management)",
             "Accept": "application/json",
         }
+        if self.nvd_service.api_key:
+            headers["apiKey"] = self.nvd_service.api_key
 
-        logger.info("Fetching KEV CVEs from NVD API...")
+        self._event("Liste der aktiv ausgenutzten Lücken wird bei der NVD abgefragt")
 
         while True:
             try:
@@ -73,23 +85,29 @@ class CISAKEVService:
 
                 start_index += results_per_page
 
-                # Rate limiting: NVD allows 5 requests per 30 seconds without API key
-                # Sleep for 6 seconds between requests to be safe
-                time.sleep(6)
+                # Rate limiting: wait between two requests (6 s without API key)
+                time.sleep(self.nvd_service.rate_limit_delay)
 
             except Exception as e:
                 logger.error(f"Failed to fetch KEV CVEs from NVD: {e}")
+                self._event(f"CISA-KEV-Abfrage fehlgeschlagen ({type(e).__name__})")
                 break
 
         logger.info(f"Successfully fetched {len(all_cves)} KEV CVEs from NVD")
         return all_cves
 
-    def update_exploited_vulnerabilities(self, db: Session) -> Dict:
+    def update_exploited_vulnerabilities(self, db: Session, create_missing: bool = True) -> Dict:
         """
         Update database with CISA KEV data from NVD API.
 
+        The NVD answers the KEV query with the complete records of these CVEs.
+        CVEs that are not in the database yet (for example because only the last
+        days were imported) are created from exactly this answer, so no further
+        request is needed.
+
         Args:
             db: Database session
+            create_missing: Create CVEs of the KEV list that the database lacks
 
         Returns:
             Dict with update statistics
@@ -101,12 +119,14 @@ class CISAKEVService:
                 "status": "error",
                 "message": "Failed to fetch CISA KEV data from NVD",
                 "updated": 0,
+                "created": 0,
                 "not_found": 0,
             }
 
-        logger.info(f"Processing {len(kev_cves)} KEV entries from NVD")
+        self._event(f"{len(kev_cves)} Einträge in der KEV-Liste, werden abgeglichen")
 
         updated_count = 0
+        created_count = 0
         not_found_count = 0
 
         for vuln_wrapper in kev_cves:
@@ -121,24 +141,32 @@ class CISAKEVService:
                 db.query(Vulnerability).filter(Vulnerability.cve_id == cve_id).first()
             )
 
+            if existing is None:
+                not_found_count += 1
+                if create_missing:
+                    existing = self.nvd_service._process_cve(db, vuln_wrapper, existing=None)
+                    if existing is not None:
+                        created_count += 1
+
             if existing:
                 # Mark as exploited
                 existing.exploited_in_the_wild = True
 
                 # Add CISA source if not present
-                sources = existing.sources or []
+                sources = list(existing.sources or [])
                 if "cisa_kev" not in sources:
                     sources.append("cisa_kev")
                     existing.sources = sources
 
                 # Recalculate priority (exploitation increases priority)
+                published = existing.published_at
                 existing.priority_score = self.nvd_service._calculate_priority(
                     existing.cvss_score,
                     existing.severity,
                     (
-                        existing.published_at.isoformat()
-                        if existing.published_at
-                        else None
+                        published
+                        if isinstance(published, str)
+                        else published.isoformat() if published else None
                     ),
                     exploited=True,
                 )
@@ -148,8 +176,6 @@ class CISAKEVService:
                 if updated_count % 100 == 0:
                     logger.info(f"Updated {updated_count} CVEs...")
                     db.commit()  # Commit in batches
-            else:
-                not_found_count += 1
 
         # Final commit
         db.commit()
@@ -159,14 +185,15 @@ class CISAKEVService:
         refresh_stats_cache(db)
 
         logger.info(
-            f"CISA KEV update complete: {updated_count} updated, "
-            f"{not_found_count} not found in database"
+            f"CISA KEV update complete: {updated_count} updated "
+            f"({created_count} newly created), {not_found_count} were not in the database"
         )
 
         return {
             "status": "success",
             "total_kev_entries": len(kev_cves),
             "updated": updated_count,
+            "created": created_count,
             "not_found": not_found_count,
             "timestamp": datetime.utcnow().isoformat(),
         }
