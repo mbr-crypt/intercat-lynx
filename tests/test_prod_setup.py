@@ -462,3 +462,37 @@ def test_nginx_does_not_leak_responses_between_users(path, tmp_path):
     finally:
         subprocess.run(["nginx", "-c", str(cfg), "-s", "stop"], capture_output=True)
         server.shutdown()
+
+
+def test_init_env_creates_the_ssl_folder_even_without_https(project_copy):
+    """Otherwise Docker creates it as root at the first start and the certificate
+    for a later HTTPS run cannot be written (found on the VM test)."""
+    assert _run(project_copy, "http://10.1.2.3").returncode == 0
+    assert (project_copy / "nginx" / "ssl").is_dir()
+
+
+@pytest.mark.skipif(not shutil.which("openssl"), reason="openssl not available")
+def test_init_env_reports_a_failed_certificate_instead_of_stopping_silently(project_copy, tmp_path_factory):
+    real = shutil.which("openssl")
+    stub_dir = tmp_path_factory.mktemp("stub")
+    stub = stub_dir / "openssl"
+    stub.write_text(
+        '#!/bin/sh\n'
+        'if [ "$1" = req ]; then echo "Can\'t open nginx/ssl/nginx.key for writing: Permission denied" >&2; exit 1; fi\n'
+        f'exec {real} "$@"\n'
+    )
+    stub.chmod(0o755)
+    (project_copy / "nginx" / "ssl").mkdir(parents=True)
+    (project_copy / "nginx" / "ssl").chmod(0o555)
+    import os
+
+    r = subprocess.run(
+        ["bash", "scripts/init-env.sh", "https://lynx.example.org", "--https"],
+        cwd=project_copy, capture_output=True, text=True,
+        env={**os.environ, "PATH": f"{stub_dir}:{os.environ['PATH']}"},
+    )
+    (project_copy / "nginx" / "ssl").chmod(0o755)
+    assert r.returncode != 0
+    assert "certificate could not be created" in r.stderr and "Permission denied" in r.stderr
+    if os.geteuid() != 0:  # root can always write, so the hint only applies to normal users
+        assert "chown" in r.stderr
