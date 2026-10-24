@@ -17,11 +17,11 @@ export const IMPORT_PHASES: { id: string; label: string }[] = [
   { id: "catalog", label: "Produktkatalog aufbauen" },
 ];
 
-/** Time spans offered for "recent" imports, with what to expect (measured on the VM test: ~160 CVEs/min). */
+/** Time spans offered for "recent" imports, with what to expect (measured on the VM: 1 day ≈ 1 min, 7 days ≈ 5 min). */
 export const IMPORT_DAY_OPTIONS: { days: number; hint: string }[] = [
-  { days: 1, hint: "wenige hundert bis tausend CVEs, einige Minuten" },
-  { days: 7, hint: "etwa 25.000 CVEs, bisher gemessen rund 2,5 Stunden" },
-  { days: 30, hint: "etwa 50.000 CVEs, mehrere Stunden" },
+  { days: 1, hint: "einige tausend CVEs, gemessen rund 1 Minute" },
+  { days: 7, hint: "etwa 25.000 CVEs, gemessen rund 5 Minuten" },
+  { days: 30, hint: "etwa 50.000 CVEs, geschätzt rund 10 Minuten (noch nicht gemessen)" },
   { days: 120, hint: "sehr viele, nur wenn nötig" },
 ];
 
