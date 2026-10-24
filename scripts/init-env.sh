@@ -79,6 +79,12 @@ fi
 cp .env.example .env
 chmod 600 .env
 
+# docker-compose.yml mounts ./nginx/ssl into the web server container. If the
+# folder does not exist when the stack starts, Docker creates it itself, owned
+# by root, and this script (running as you) can no longer put a certificate
+# into it. So create it first, as the current user.
+mkdir -p nginx/ssl
+
 set_var POSTGRES_PASSWORD "$(random 32)"
 set_var SECRET_KEY "$(random 64)"
 set_var CSRF_SECRET_KEY "$(random 48)"
@@ -88,7 +94,6 @@ set_var ALLOWED_ORIGINS "$URL"
 
 if [ "$HTTPS" -eq 1 ]; then
   set_var NGINX_CONF "./nginx/nginx.conf"
-  mkdir -p nginx/ssl
   if [ ! -f nginx/ssl/nginx.crt ] || [ ! -f nginx/ssl/nginx.key ]; then
     if ! command -v openssl >/dev/null 2>&1; then
       echo "openssl is needed to create the test certificate (sudo apt install openssl)." >&2
@@ -97,9 +102,17 @@ if [ "$HTTPS" -eq 1 ]; then
     host="${URL#*://}"; host="${host%%[:/]*}"
     # An IP address needs a different subjectAltName type than a name
     if [[ "$host" =~ ^[0-9.]+$ ]]; then san="IP:${host}"; else san="DNS:${host}"; fi
-    openssl req -x509 -nodes -newkey rsa:2048 -days 365 \
+    if ! openssl_error="$(openssl req -x509 -nodes -newkey rsa:2048 -days 365 \
       -keyout nginx/ssl/nginx.key -out nginx/ssl/nginx.crt \
-      -subj "/CN=${host}" -addext "subjectAltName=${san}" >/dev/null 2>&1
+      -subj "/CN=${host}" -addext "subjectAltName=${san}" 2>&1)"; then
+      echo "The test certificate could not be created in nginx/ssl:" >&2
+      echo "$openssl_error" | tail -n 3 >&2
+      if [ ! -w nginx/ssl ]; then
+        echo "The folder nginx/ssl is not writable for you (Docker may have created it as root)." >&2
+        echo "Fix:  sudo chown \"\$USER\" nginx/ssl   and run this script again (add --force; this creates new secrets, so only before the first start)" >&2
+      fi
+      exit 1
+    fi
     chmod 600 nginx/ssl/nginx.key
     echo "Created a self-signed certificate for ${host} (valid 365 days)."
   fi
