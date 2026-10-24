@@ -118,6 +118,12 @@ export function ImportProgress({ status, receivedAt, connectionLost = false }: P
               {" – "}
               <strong>{(status.processed || 0).toLocaleString("de-DE")}</strong> von{" "}
               {status.total?.toLocaleString("de-DE")} CVEs ({pct} %)
+              {status.eta_seconds !== undefined && (
+                <>
+                  {" · "}
+                  <strong>noch etwa {formatDuration(Math.max(0, status.eta_seconds - sincePoll))}</strong>
+                </>
+              )}
             </>
           )}
         </p>
@@ -127,9 +133,7 @@ export function ImportProgress({ status, receivedAt, connectionLost = false }: P
       {running && (
         <p className="text-xs text-gray-500">
           Laufzeit {formatDuration(elapsed)}
-          {status.eta_seconds !== undefined && status.phase === "nvd" && (
-            <> · noch etwa {formatDuration(Math.max(0, status.eta_seconds - sincePoll))} (grobe Schätzung)</>
-          )}
+          {status.eta_seconds !== undefined && determinate && <> · Restzeit ist eine grobe Schätzung</>}
           {" · "}letzte Rückmeldung des Servers vor {formatDuration(silent)}
         </p>
       )}
