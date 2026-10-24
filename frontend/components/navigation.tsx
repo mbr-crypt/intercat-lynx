@@ -8,6 +8,7 @@ import { LynxMark } from "./LynxMark";
 import { PRODUCT_NAME, SOURCE_URL } from "@/lib/branding";
 import UserMenu from "./user-menu";
 import { NotificationCenter } from "./NotificationCenter";
+import { ActivityIndicator } from "./ActivityIndicator";
 import { ThemeToggle } from "./ThemeToggle";
 import { useState } from "react";
 
@@ -96,6 +97,9 @@ export function Navigation() {
                 </svg>
               </a>
               <div className="hidden md:block">
+                <ActivityIndicator />
+              </div>
+              <div className="hidden md:block">
                 <NotificationCenter />
               </div>
               <div className="hidden md:block">
@@ -149,6 +153,7 @@ export function Navigation() {
                 );
               })}
               <div className="pt-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                <ActivityIndicator />
                 <NotificationCenter />
                 <UserMenu />
               </div>

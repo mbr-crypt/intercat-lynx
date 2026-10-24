@@ -358,3 +358,88 @@ def test_cve_org_lookup_is_skipped_after_repeated_network_failures(monkeypatch):
         assert nvd._fetch_vendor_product_fallback(f"CVE-2026-{i:04d}") == {}
     assert len(calls) == 5
     assert len(events) == 1 and "cve.org" in events[0]
+
+
+# --- activity display for administrators (after the setup assistant is closed) ---
+
+
+def _admin_token(client, db_session, username="root", role=UserRole.ADMIN):
+    make_user(db_session, username, role=role)
+    r = client.post("/api/v1/auth/login", json={"username": username, "password": "Sehr-Langes-Passwort-42"})
+    assert r.status_code == 200, r.text
+    return r.json()["access_token"]
+
+
+def test_activity_needs_an_administrator(client, db_session):
+    assert client.get("/api/v1/admin/activity").status_code in (401, 403)
+    token = _admin_token(client, db_session, "viewer1", UserRole.VIEWER)
+    assert client.get("/api/v1/admin/activity", headers=auth(token)).status_code == 403
+    assert client.post("/api/v1/admin/import", json={"mode": "recent"}, headers=auth(token)).status_code == 403
+
+
+def test_activity_is_empty_without_an_import(client, db_session):
+    token = _admin_token(client, db_session)
+    r = client.get("/api/v1/admin/activity", headers=auth(token))
+    assert r.status_code == 200
+    assert r.json() == {"activities": [], "running": False}
+
+
+def test_activity_shows_the_running_import_with_progress(client, db_session):
+    token = _admin_token(client, db_session)
+    _store_status(
+        db_session, mode="recent", days=7, phase="nvd", processed=1250, total=4310,
+        detail="Seite 1 von 3: 250 von 2000 gespeichert",
+        log=[{"t": "2026-10-24T10:00:00+00:00", "text": "Import gestartet"}],
+    )
+    body = client.get("/api/v1/admin/activity", headers=auth(token)).json()
+    assert body["running"] is True
+    (item,) = body["activities"]
+    assert item["id"] == "import" and item["title"] == "Datenimport, letzte 7 Tage"
+    assert item["state"] == "running" and item["processed"] == 1250 and item["total"] == 4310
+    assert item["log"][0]["text"] == "Import gestartet"
+    assert "elapsed_seconds" in item and "seconds_since_heartbeat" in item
+
+
+def test_activity_reports_a_dead_import_as_interrupted_not_running(client, db_session):
+    import json
+    from datetime import datetime, timedelta, timezone
+
+    token = _admin_token(client, db_session)
+    old = (datetime.now(timezone.utc) - timedelta(minutes=30)).isoformat()
+    settings_service.set_value(
+        db_session, import_job.STATUS_KEY,
+        json.dumps({"state": "running", "mode": "full", "started_at": old, "heartbeat": old}),
+    )
+    body = client.get("/api/v1/admin/activity", headers=auth(token)).json()
+    assert body["running"] is False
+    assert body["activities"][0]["state"] == "interrupted"
+    assert body["activities"][0]["title"] == "Datenimport, kompletter Bestand"
+
+
+def test_admin_can_start_an_import_and_it_is_logged(client, db_session, session_factory, monkeypatch):
+    from backend.models import AuditEvent
+
+    started = []
+    monkeypatch.setattr(
+        import_job, "start_in_background", lambda factory, mode, days: started.append((mode, days)) or True
+    )
+    token = _admin_token(client, db_session)
+    r = client.post("/api/v1/admin/import", json={"mode": "recent", "days": 14}, headers=auth(token))
+    assert r.status_code == 200 and r.json() == {"started": True}
+    assert started == [("recent", 14)]
+    event = db_session.query(AuditEvent).filter_by(action="import.started").one()
+    assert event.actor_username == "root" and event.detail == "mode=recent days=14"
+
+
+def test_second_import_start_is_refused_with_409(client, db_session, monkeypatch):
+    monkeypatch.setattr(import_job, "start_in_background", lambda *a: False)
+    token = _admin_token(client, db_session)
+    r = client.post("/api/v1/admin/import", json={"mode": "full"}, headers=auth(token))
+    assert r.status_code == 409
+
+
+@pytest.mark.parametrize("body", [{"mode": "skip"}, {"mode": "bogus"}, {"mode": "recent", "days": 0}, {"mode": "recent", "days": 500}])
+def test_import_request_is_validated(client, db_session, monkeypatch, body):
+    monkeypatch.setattr(import_job, "start_in_background", lambda *a: True)
+    token = _admin_token(client, db_session)
+    assert client.post("/api/v1/admin/import", json=body, headers=auth(token)).status_code == 422

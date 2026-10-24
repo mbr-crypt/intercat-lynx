@@ -7,6 +7,8 @@ import { LynxMark } from '@/components/LynxMark';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { TwoFactorSettings } from '@/components/TwoFactorSettings';
+import { IMPORT_DAY_OPTIONS, ImportProgress } from '@/components/ImportProgress';
+import type { ImportStatus as AdminImportStatus } from '@/lib/admin-api';
 
 const inputClass =
   'w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary';
@@ -24,31 +26,7 @@ const STEPS: { id: Step; label: string }[] = [
 ];
 
 interface Check { name: string; ok: boolean; required: boolean; detail: string }
-interface ImportLogEntry { t: string; text: string }
-interface ImportStatus {
-  state: 'idle' | 'running' | 'done' | 'error' | 'interrupted';
-  phase?: string;
-  processed?: number;
-  total?: number | null;
-  message?: string;
-  detail?: string | null;
-  log?: ImportLogEntry[];
-  elapsed_seconds?: number;
-  seconds_since_heartbeat?: number;
-}
-
-const IMPORT_PHASES: { id: string; label: string }[] = [
-  { id: 'nvd', label: 'CVE-Daten von der NVD laden' },
-  { id: 'cisa_kev', label: 'Aktiv ausgenutzte Lücken abgleichen (CISA KEV)' },
-  { id: 'stats', label: 'Statistik berechnen' },
-  { id: 'catalog', label: 'Produktkatalog aufbauen' },
-];
-
-function formatDuration(totalSeconds: number): string {
-  const s = Math.max(0, Math.round(totalSeconds));
-  const m = Math.floor(s / 60);
-  return m > 0 ? `${m} Min. ${String(s % 60).padStart(2, '0')} s` : `${s} s`;
-}
+type ImportStatus = AdminImportStatus;
 
 function errorText(data: any, fallback: string): string {
   if (typeof data?.detail === 'string') return data.detail;
@@ -453,7 +431,7 @@ function SettingsStep({ call, onSaved }: { call: Call; onSaved: (registration: b
     <Card>
       <CardHeader>
         <CardTitle>Einstellungen</CardTitle>
-        <CardDescription>Alles optional und später änderbar. Passwörter und Schlüssel werden verschlüsselt gespeichert.</CardDescription>
+        <CardDescription>Alles optional. Passwörter und Schlüssel werden verschlüsselt gespeichert. Eine Einstellungsseite für später gibt es noch nicht; bis dahin lassen sich die Werte in der Datei .env ändern.</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={save} className="space-y-6">
@@ -520,11 +498,10 @@ function SettingsStep({ call, onSaved }: { call: Call; onSaved: (registration: b
 
 function ImportStep({ call, onNext }: { call: Call; onNext: () => void }) {
   const [mode, setMode] = useState<'recent' | 'full' | 'skip'>('recent');
-  const [days, setDays] = useState(30);
+  const [days, setDays] = useState(1);
   const [status, setStatus] = useState<ImportStatus>({ state: 'idle' });
   const [error, setError] = useState('');
   const [connectionLost, setConnectionLost] = useState(false);
-  const [tick, setTick] = useState(0);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   // Right after "Import starten" the server may still answer "idle" for a moment
   // (the job writes its first status a split second later). Do not jump back
@@ -562,13 +539,6 @@ function ImportStep({ call, onNext }: { call: Call; onNext: () => void }) {
     if (!running && timer.current) { clearInterval(timer.current); timer.current = null; }
   }, [running, poll]);
 
-  // One-second clock so the running time keeps counting between two polls
-  useEffect(() => {
-    if (!running) return;
-    const id = setInterval(() => setTick((n) => n + 1), 1000);
-    return () => clearInterval(id);
-  }, [running]);
-
   const start = async () => {
     setError('');
     if (mode === 'skip') { onNext(); return; }
@@ -586,14 +556,7 @@ function ImportStep({ call, onNext }: { call: Call; onNext: () => void }) {
     setTimeout(poll, 800);
   };
 
-  const pct = status.total ? Math.min(100, Math.round(((status.processed || 0) / status.total) * 100)) : null;
-  const phaseIndex = IMPORT_PHASES.findIndex((p) => p.id === status.phase);
   const showProgress = running || status.state === 'done' || status.state === 'error' || status.state === 'interrupted';
-  void tick; // re-render every second
-  const sincePoll = running ? (Date.now() - receivedAt.current) / 1000 : 0;
-  const elapsed = (status.elapsed_seconds ?? 0) + sincePoll;
-  const silent = (status.seconds_since_heartbeat ?? 0) + sincePoll;
-  const determinate = status.phase === 'nvd' && pct !== null;
 
   return (
     <Card>
@@ -609,110 +572,25 @@ function ImportStep({ call, onNext }: { call: Call; onNext: () => void }) {
         {!running && status.state !== 'done' && (
           <div className="space-y-2 text-sm">
             <label className="flex items-start gap-2"><input type="radio" className="mt-1" checked={mode === 'recent'} onChange={() => setMode('recent')} />
-              <span><strong>Letzte Tage laden</strong> (empfohlen zum Start, wenige Minuten)
+              <span><strong>Letzte Tage laden</strong> (empfohlen zum Start; gezählt werden alle in dem Zeitraum <em>geänderten</em> CVEs)
                 {mode === 'recent' && (
                   <span className="ml-2">Zeitraum:{' '}
                     <select value={days} onChange={(e) => setDays(Number(e.target.value))} className="border rounded px-1 bg-white dark:bg-gray-800">
-                      {[7, 30, 90, 120].map((d) => <option key={d} value={d}>{d} Tage</option>)}
-                    </select></span>)}
+                      {IMPORT_DAY_OPTIONS.map((o) => <option key={o.days} value={o.days}>{o.days} {o.days === 1 ? 'Tag' : 'Tage'}</option>)}
+                    </select>
+                    <span className="ml-2 text-gray-500">{IMPORT_DAY_OPTIONS.find((o) => o.days === days)?.hint}</span></span>)}
               </span></label>
             <label className="flex items-start gap-2"><input type="radio" className="mt-1" checked={mode === 'full'} onChange={() => setMode('full')} />
-              <span><strong>Kompletter Bestand</strong> (rund 300.000 CVEs; ohne NVD-Schlüssel ca. 15 bis 30 Minuten)</span></label>
+              <span><strong>Kompletter Bestand</strong> (rund 300.000 CVEs; gemessen etwa 160 CVEs pro Minute, das dauert über einen Tag)</span></label>
             <label className="flex items-start gap-2"><input type="radio" className="mt-1" checked={mode === 'skip'} onChange={() => setMode('skip')} />
-              <span><strong>Überspringen</strong> (die geplanten Hintergrundaufgaben laden später nach)</span></label>
+              <span><strong>Überspringen</strong> (die geplanten Aufgaben holen danach nur neue Änderungen; mehr lässt sich später unter Verwaltung → Daten nachladen)</span></label>
           </div>
         )}
 
         {showProgress && (
-          <div className="space-y-3">
-            <ol className="space-y-1 text-sm">
-              {IMPORT_PHASES.map((p, i) => {
-                const finished = status.state === 'done' || (phaseIndex >= 0 && i < phaseIndex);
-                const active = running && i === phaseIndex;
-                const failed = (status.state === 'error' || status.state === 'interrupted') && i === phaseIndex;
-                return (
-                  <li key={p.id} className="flex items-center gap-2">
-                    {finished ? <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" aria-hidden />
-                      : active ? <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" aria-hidden />
-                      : failed ? <XCircle className="h-4 w-4 text-red-600 shrink-0" aria-hidden />
-                      : <span className="h-4 w-4 shrink-0 rounded-full border border-gray-300 dark:border-gray-600" aria-hidden />}
-                    <span className={finished || active || failed ? 'text-gray-900 dark:text-white' : 'text-gray-500'}>
-                      {p.label}
-                      <span className="sr-only">{finished ? ' (erledigt)' : active ? ' (läuft)' : failed ? ' (fehlgeschlagen)' : ' (wartet)'}</span>
-                    </span>
-                  </li>
-                );
-              })}
-            </ol>
-
-            <div
-              className="relative h-3 w-full rounded bg-gray-200 dark:bg-gray-700 overflow-hidden"
-              role="progressbar"
-              aria-label="Fortschritt des Datenimports"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={status.state === 'done' ? 100 : determinate ? pct ?? undefined : undefined}
-            >
-              {status.state === 'done' || determinate ? (
-                <div className="h-3 bg-primary transition-all duration-500" style={{ width: `${status.state === 'done' ? 100 : pct}%` }} />
-              ) : running ? (
-                <div className="lynx-indeterminate absolute inset-y-0 left-0 w-1/4 rounded bg-primary"
-                  style={{ animation: 'lynx-indeterminate 1.6s ease-in-out infinite' }} />
-              ) : null}
-            </div>
-
-            <div className="text-sm text-gray-700 dark:text-gray-300 space-y-1" role="status" aria-live="polite">
-              <p>
-                {status.message}
-                {determinate && running && (
-                  <> – <strong>{(status.processed || 0).toLocaleString('de-DE')}</strong> von {status.total?.toLocaleString('de-DE')} CVEs ({pct} %)</>
-                )}
-              </p>
-              {running && status.detail && <p className="text-gray-600 dark:text-gray-400">{status.detail}</p>}
-            </div>
-
-            {running && (
-              <p className="text-xs text-gray-500">
-                Laufzeit {formatDuration(elapsed)} · letzte Rückmeldung des Servers vor {formatDuration(silent)}
-              </p>
-            )}
-            {running && silent > 30 && !connectionLost && (
-              <p className="text-sm text-amber-700 dark:text-amber-400" role="alert">
-                <AlertTriangle className="inline h-4 w-4 mr-1" aria-hidden />
-                Seit {formatDuration(silent)} keine Rückmeldung vom Import. Das kann bei sehr langsamer Verbindung
-                zur NVD vorkommen. Nach 90 Sekunden ohne Rückmeldung gilt der Import als abgebrochen und kann
-                neu gestartet werden.
-              </p>
-            )}
-            {running && connectionLost && (
-              <p className="text-sm text-amber-700 dark:text-amber-400" role="alert">
-                <AlertTriangle className="inline h-4 w-4 mr-1" aria-hidden />
-                Der Server antwortet gerade nicht. Der Import läuft möglicherweise weiter, diese Seite versucht es
-                automatisch erneut.
-              </p>
-            )}
-
-            {status.log && status.log.length > 0 && (
-              <details className="text-xs" open={status.state === 'error' || status.state === 'interrupted'}>
-                <summary className="cursor-pointer text-gray-600 dark:text-gray-400">Ereignisprotokoll ({status.log.length})</summary>
-                <ul className="mt-2 space-y-0.5 font-mono text-gray-600 dark:text-gray-400">
-                  {status.log.map((e, i) => (
-                    <li key={`${e.t}-${i}`}>
-                      <span className="text-gray-400">{new Date(e.t).toLocaleTimeString('de-DE')}</span> {e.text}
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            )}
-          </div>
+          <ImportProgress status={status} receivedAt={receivedAt.current} connectionLost={connectionLost} />
         )}
 
-        {(status.state === 'error' || status.state === 'interrupted') && (
-          <div className="text-sm text-red-600 space-y-1" role="alert">
-            <p>{status.message}</p>
-            <p className="text-gray-600 dark:text-gray-400">Bereits geladene CVEs bleiben erhalten, ein neuer Start aktualisiert sie nur.</p>
-          </div>
-        )}
         <ErrorLine text={error} />
 
         <div className="flex gap-2">
