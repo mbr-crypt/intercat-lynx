@@ -17,6 +17,14 @@ from ..utils.client_ip import get_client_ip
 logger = logging.getLogger(__name__)
 
 
+# Status pages poll their endpoint every few seconds while an import runs. They get a
+# budget of their own, otherwise a single open browser tab would use up the limit of the
+# whole address (and with it the login). The endpoints are cheap reads; unauthenticated
+# calls are rejected before any work is done.
+STATUS_PATHS = {"/api/v1/admin/activity", "/api/v1/setup/import/status"}
+STATUS_BUCKET = "status"
+
+
 class RedisRateLimiter:
     """
     Distributed rate limiter using Redis.
@@ -29,6 +37,8 @@ class RedisRateLimiter:
         redis_url: str,
         requests_per_minute: int = 60,
         requests_per_hour: int = 1000,
+        status_per_minute: int = 120,
+        status_per_hour: int = 4000,
     ):
         """
         Initialize Redis rate limiter.
@@ -41,6 +51,8 @@ class RedisRateLimiter:
         self.redis_client = redis.from_url(redis_url, decode_responses=True)
         self.requests_per_minute = requests_per_minute
         self.requests_per_hour = requests_per_hour
+        self.status_per_minute = status_per_minute
+        self.status_per_hour = status_per_hour
 
         # Test Redis connection. A missing Redis must not stop the app from
         # importing/starting: check_rate_limit() already fails open on Redis
@@ -54,19 +66,24 @@ class RedisRateLimiter:
                 f"Redis not reachable, rate limiting will fail open until it is: {e}"
             )
 
-    def check_rate_limit(self, ip: str) -> Tuple[bool, str, dict]:
+    def check_rate_limit(self, ip: str, bucket: str = "") -> Tuple[bool, str, dict]:
         """
         Check if IP has exceeded rate limit using Redis.
 
         Args:
             ip: Client IP address
+            bucket: "" for the general budget, STATUS_BUCKET for status polling
 
         Returns:
             Tuple of (is_allowed, error_message, rate_limit_info)
         """
         now = datetime.now()
-        minute_key = f"rate_limit:{ip}:minute:{now.strftime('%Y%m%d%H%M')}"
-        hour_key = f"rate_limit:{ip}:hour:{now.strftime('%Y%m%d%H')}"
+        prefix = f"rate_limit:{bucket}:{ip}" if bucket else f"rate_limit:{ip}"
+        minute_key = f"{prefix}:minute:{now.strftime('%Y%m%d%H%M')}"
+        hour_key = f"{prefix}:hour:{now.strftime('%Y%m%d%H')}"
+        per_minute, per_hour = self.requests_per_minute, self.requests_per_hour
+        if bucket == STATUS_BUCKET:
+            per_minute, per_hour = self.status_per_minute, self.status_per_hour
 
         try:
             # Use Redis pipeline for atomic operations
@@ -86,12 +103,12 @@ class RedisRateLimiter:
             hour_count = results[2]
 
             # Calculate remaining requests
-            minute_remaining = max(0, self.requests_per_minute - minute_count)
-            hour_remaining = max(0, self.requests_per_hour - hour_count)
+            minute_remaining = max(0, per_minute - minute_count)
+            hour_remaining = max(0, per_hour - hour_count)
 
             rate_limit_info = {
-                "limit_minute": self.requests_per_minute,
-                "limit_hour": self.requests_per_hour,
+                "limit_minute": per_minute,
+                "limit_hour": per_hour,
                 "remaining_minute": minute_remaining,
                 "remaining_hour": hour_remaining,
                 "used_minute": minute_count,
@@ -99,17 +116,17 @@ class RedisRateLimiter:
             }
 
             # Check limits
-            if minute_count > self.requests_per_minute:
+            if minute_count > per_minute:
                 return (
                     False,
-                    f"Rate limit exceeded: {self.requests_per_minute} requests per minute",
+                    f"Rate limit exceeded: {per_minute} requests per minute",
                     rate_limit_info,
                 )
 
-            if hour_count > self.requests_per_hour:
+            if hour_count > per_hour:
                 return (
                     False,
-                    f"Rate limit exceeded: {self.requests_per_hour} requests per hour",
+                    f"Rate limit exceeded: {per_hour} requests per hour",
                     rate_limit_info,
                 )
 
@@ -122,10 +139,10 @@ class RedisRateLimiter:
                 True,
                 "",
                 {
-                    "limit_minute": self.requests_per_minute,
-                    "limit_hour": self.requests_per_hour,
-                    "remaining_minute": self.requests_per_minute,
-                    "remaining_hour": self.requests_per_hour,
+                    "limit_minute": per_minute,
+                    "limit_hour": per_hour,
+                    "remaining_minute": per_minute,
+                    "remaining_hour": per_hour,
                     "error": "rate_limiter_unavailable",
                 },
             )
@@ -158,6 +175,8 @@ redis_rate_limiter = RedisRateLimiter(
     redis_url=REDIS_URL,
     requests_per_minute=int(os.getenv("RATE_LIMIT_PER_MINUTE", "60")),
     requests_per_hour=int(os.getenv("RATE_LIMIT_PER_HOUR", "1000")),
+    status_per_minute=int(os.getenv("RATE_LIMIT_STATUS_PER_MINUTE", "120")),
+    status_per_hour=int(os.getenv("RATE_LIMIT_STATUS_PER_HOUR", "4000")),
 )
 
 
@@ -187,8 +206,9 @@ async def redis_rate_limit_middleware(request: Request, call_next):
         return response
 
     # Check rate limit
+    bucket = STATUS_BUCKET if request.url.path in STATUS_PATHS else ""
     is_allowed, error_message, rate_info = redis_rate_limiter.check_rate_limit(
-        client_ip
+        client_ip, bucket
     )
 
     if not is_allowed:

@@ -39,9 +39,11 @@ interface Props {
   receivedAt: number;
   /** The server did not answer the last few requests */
   connectionLost?: boolean;
+  /** The server answered "too many requests" (HTTP 429) */
+  rateLimited?: boolean;
 }
 
-export function ImportProgress({ status, receivedAt, connectionLost = false }: Props) {
+export function ImportProgress({ status, receivedAt, connectionLost = false, rateLimited = false }: Props) {
   const [, setTick] = useState(0);
   const running = status.state === "running";
 
@@ -140,14 +142,21 @@ export function ImportProgress({ status, receivedAt, connectionLost = false }: P
       {!running && status.elapsed_seconds !== undefined && status.state !== "idle" && (
         <p className="text-xs text-gray-500">Laufzeit {formatDuration(status.elapsed_seconds)}</p>
       )}
-      {running && silent > 30 && !connectionLost && (
+      {running && silent > 30 && !connectionLost && !rateLimited && (
         <p className="text-sm text-amber-700 dark:text-amber-400" role="alert">
           <AlertTriangle className="mr-1 inline h-4 w-4" aria-hidden />
           Seit {formatDuration(silent)} keine Rückmeldung vom Import. Das kann bei sehr langsamer Verbindung zur NVD
           vorkommen. Nach 90 Sekunden ohne Rückmeldung gilt der Import als abgebrochen und kann neu gestartet werden.
         </p>
       )}
-      {running && connectionLost && (
+      {running && rateLimited && (
+        <p className="text-sm text-amber-700 dark:text-amber-400" role="alert">
+          <AlertTriangle className="mr-1 inline h-4 w-4" aria-hidden />
+          Der Server hat die Abfragen dieser Adresse kurz begrenzt („zu viele Anfragen“). Der Import läuft weiter, die
+          Anzeige fragt langsamer nach und aktualisiert sich gleich wieder.
+        </p>
+      )}
+      {running && connectionLost && !rateLimited && (
         <p className="text-sm text-amber-700 dark:text-amber-400" role="alert">
           <AlertTriangle className="mr-1 inline h-4 w-4" aria-hidden />
           Der Server antwortet gerade nicht. Der Import läuft möglicherweise weiter, diese Seite versucht es automatisch

@@ -10,7 +10,7 @@ import { IMPORT_DAY_OPTIONS as DAY_OPTIONS, ImportProgress } from "@/components/
 type Mode = "recent" | "full";
 
 export function ImportPanel({ token }: { token: string }) {
-  const { importActivity, running, connectionLost, receivedAt, refresh } = useActivity(token, true, true);
+  const { importActivity, running, connectionLost, rateLimited, receivedAt, refresh } = useActivity(token, true);
   const [mode, setMode] = useState<Mode>("recent");
   const [days, setDays] = useState(7);
   const [error, setError] = useState("");
@@ -108,7 +108,7 @@ export function ImportPanel({ token }: { token: string }) {
       {importActivity && (
         <section className="rounded-2xl bg-white p-6 dark:bg-gray-800" aria-label="Stand des Imports">
           <h2 className="mb-4 text-lg font-semibold text-gray-900 dark:text-white">{importActivity.title}</h2>
-          <ImportProgress status={importActivity} receivedAt={receivedAt} connectionLost={connectionLost} />
+          <ImportProgress status={importActivity} receivedAt={receivedAt} connectionLost={connectionLost} rateLimited={rateLimited} />
         </section>
       )}
     </div>
