@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Info, Menu, X, Newspaper, TrendingUp, Layers, Crosshair } from "lucide-react";
+import { BarChart3, Info, Menu, X, Newspaper, Crosshair } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LynxMark } from "./LynxMark";
 import { SOURCE_URL } from "@/lib/branding";
@@ -21,9 +21,7 @@ export function Navigation() {
   const links = [
     { href: "/", label: "Dashboard", icon: BarChart3 },
     { href: "/watchlist", label: "My Products", icon: Crosshair, isNew: true },
-    { href: "/my-stack", label: "My Stack", icon: Layers },
     { href: "/news", label: "News", icon: Newspaper },
-    { href: "/site-stats", label: "Site Stats", icon: TrendingUp },
     { href: "/about", label: "About", icon: Info },
   ];
 

@@ -1,6 +1,7 @@
 "use client";
 
-import { apiBase } from "@/lib/config";
+/** "Statistik" tab of the administration: visitor statistics of this instance (was the public page /site-stats). */
+
 import { useEffect, useState } from "react";
 import {
   BarChart3,
@@ -21,8 +22,6 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-
-const API_URL = apiBase();
 
 interface AnalyticsData {
   total_views: number;
@@ -107,7 +106,7 @@ function getCountryFlag(countryCode: string | null) {
   return String.fromCodePoint(...codePoints);
 }
 
-export default function SiteStatsPage() {
+export function StatsPanel({ token }: { token: string }) {
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -116,10 +115,10 @@ export default function SiteStatsPage() {
   const fetchAnalytics = async () => {
     try {
       setLoading(true);
-      const response = await fetch(
-        `${API_URL}/api/v1/analytics/stats?days=${days}`
-      );
-      if (!response.ok) throw new Error("Failed to fetch analytics");
+      const response = await fetch(`/api/v1/analytics/stats?days=${days}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error(`Fehler ${response.status}`);
       const data = await response.json();
       setAnalytics(data);
       setError(null);
@@ -146,13 +145,13 @@ export default function SiteStatsPage() {
     return (
       <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-6 text-center">
         <p className="text-red-600 dark:text-red-400">
-          Error loading analytics: {error}
+          Statistik konnte nicht geladen werden: {error}
         </p>
         <button
           onClick={fetchAnalytics}
           className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
         >
-          Retry
+          Erneut versuchen
         </button>
       </div>
     );
@@ -160,29 +159,26 @@ export default function SiteStatsPage() {
 
   return (
     <div className="space-y-8">
-      {/* Header - Centered like Dashboard */}
-      <div className="text-center space-y-4">
-        <h1 className="text-4xl font-bold text-gray-900 dark:text-white">
-          Site Statistics
-        </h1>
-        <p className="text-xl text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
-          Visitor analytics and site performance metrics
+      {/* Period and refresh */}
+      <div className="space-y-3">
+        <p className="text-sm text-gray-600 dark:text-gray-400">
+          Aufrufe und Besucher dieser Instanz. Nur für Administratoren sichtbar.
         </p>
-        <div className="flex items-center justify-center gap-4">
+        <div className="flex items-center gap-4">
           <select
             value={days}
             onChange={(e) => setDays(Number(e.target.value))}
             className="px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white"
           >
-            <option value={7}>Last 7 days</option>
-            <option value={30}>Last 30 days</option>
-            <option value={90}>Last 90 days</option>
-            <option value={365}>Last year</option>
+            <option value={7}>Letzte 7 Tage</option>
+            <option value={30}>Letzte 30 Tage</option>
+            <option value={90}>Letzte 90 Tage</option>
+            <option value={365}>Letztes Jahr</option>
           </select>
           <button
             onClick={fetchAnalytics}
             className="p-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700"
-            title="Refresh"
+            title="Aktualisieren"
           >
             <RefreshCw
               className={`h-5 w-5 text-gray-600 dark:text-gray-400 ${
@@ -196,24 +192,24 @@ export default function SiteStatsPage() {
       {/* Stats Overview */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard
-          title="Total Page Views"
+          title="Seitenaufrufe gesamt"
           value={analytics?.total_views || 0}
           icon={<Eye className="h-6 w-6 text-blue-600" />}
-          description="All time"
+          description="Seit Beginn"
         />
         <StatCard
-          title="Unique Visitors"
+          title="Eindeutige Besucher"
           value={analytics?.unique_visitors || 0}
           icon={<Users className="h-6 w-6 text-green-600" />}
-          description="Based on session ID"
+          description="Anhand einer zufälligen Besucher-ID"
         />
         <StatCard
-          title="Views Today"
+          title="Aufrufe heute"
           value={analytics?.views_today || 0}
           icon={<Calendar className="h-6 w-6 text-orange-600" />}
         />
         <StatCard
-          title="Views This Month"
+          title="Aufrufe diesen Monat"
           value={analytics?.views_this_month || 0}
           icon={<TrendingUp className="h-6 w-6 text-purple-600" />}
         />
@@ -224,7 +220,7 @@ export default function SiteStatsPage() {
         <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-3 mb-2">
             <Clock className="h-5 w-5 text-blue-600" />
-            <span className="text-sm text-gray-500 dark:text-gray-400">This Week</span>
+            <span className="text-sm text-gray-500 dark:text-gray-400">Diese Woche</span>
           </div>
           <p className="text-2xl font-bold text-gray-900 dark:text-white">
             {(analytics?.views_this_week || 0).toLocaleString()}
@@ -233,7 +229,7 @@ export default function SiteStatsPage() {
         <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-3 mb-2">
             <Calendar className="h-5 w-5 text-green-600" />
-            <span className="text-sm text-gray-500 dark:text-gray-400">This Month</span>
+            <span className="text-sm text-gray-500 dark:text-gray-400">Dieser Monat</span>
           </div>
           <p className="text-2xl font-bold text-gray-900 dark:text-white">
             {(analytics?.views_this_month || 0).toLocaleString()}
@@ -242,7 +238,7 @@ export default function SiteStatsPage() {
         <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-3 mb-2">
             <TrendingUp className="h-5 w-5 text-purple-600" />
-            <span className="text-sm text-gray-500 dark:text-gray-400">This Year</span>
+            <span className="text-sm text-gray-500 dark:text-gray-400">Dieses Jahr</span>
           </div>
           <p className="text-2xl font-bold text-gray-900 dark:text-white">
             {(analytics?.views_this_year || 0).toLocaleString()}
@@ -252,10 +248,10 @@ export default function SiteStatsPage() {
 
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Views Over Time */}
+          {/* Aufrufe im Zeitverlauf */}
           <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-              Views Over Time
+              Aufrufe im Zeitverlauf
             </h3>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
@@ -298,10 +294,10 @@ export default function SiteStatsPage() {
             </div>
           </div>
 
-          {/* Top Pages */}
+          {/* Meistbesuchte Seiten */}
           <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-              Top Pages
+              Meistbesuchte Seiten
             </h3>
             <div className="space-y-3">
               {analytics?.top_pages && analytics.top_pages.length > 0 ? (
@@ -315,7 +311,7 @@ export default function SiteStatsPage() {
                         {index + 1}.
                       </span>
                       <span className="text-sm text-gray-900 dark:text-white truncate max-w-[200px]">
-                        {page.path === "/" ? "Homepage" : page.path}
+                        {page.path === "/" ? "Startseite" : page.path}
                       </span>
                     </div>
                     <span className="text-sm font-semibold text-blue-600 dark:text-blue-400">
@@ -325,7 +321,7 @@ export default function SiteStatsPage() {
                 ))
               ) : (
                 <p className="text-gray-500 dark:text-gray-400 text-center py-4">
-                  No page views yet
+                  Noch keine Aufrufe
                 </p>
               )}
             </div>
@@ -336,7 +332,7 @@ export default function SiteStatsPage() {
       <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
           <Globe className="h-5 w-5 text-blue-600" />
-          Top Countries
+          Häufigste Länder
         </h3>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
           {analytics?.views_by_country && analytics.views_by_country.length > 0 ? (
@@ -358,7 +354,7 @@ export default function SiteStatsPage() {
             ))
           ) : (
             <p className="text-gray-500 dark:text-gray-400 text-center py-4 col-span-full">
-              No geographic data yet
+              Noch keine Länderdaten
             </p>
           )}
         </div>
@@ -372,13 +368,10 @@ export default function SiteStatsPage() {
           </div>
           <div>
             <h4 className="font-semibold text-blue-900 dark:text-blue-100">
-              Privacy-Friendly Analytics
+              Datensparsame Statistik
             </h4>
             <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
-              This instance uses privacy-respecting analytics. We don&apos;t track
-              personal information, use cookies for tracking, or share data
-              with third parties. All visitor data is anonymized and stored
-              securely.
+              Es werden weder Namen noch Adressen noch Cookies zur Verfolgung gespeichert, nur der aufgerufene Pfad, das Land, Gerät und Browser sowie eine zufällige Besucher-ID. Nichts geht an Dritte.
             </p>
           </div>
         </div>

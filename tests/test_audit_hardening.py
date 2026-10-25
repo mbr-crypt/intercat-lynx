@@ -1,152 +1,14 @@
 """
 Regression tests for the findings of the security audit:
-anonymous tech-stack scans, public status endpoints, analytics input and the
-limits on e-mail codes.
+public status endpoints, analytics input and the limits on e-mail codes.
 """
-
-import secrets
 
 import pytest
 
 from backend.models import EmailVerification, UserRole
 from backend.security import attempt_limit
+from tests.test_setup_api import _admin_token
 from tests.test_watchlist import h, make_user, token_of
-
-SCAN = "/api/v1/techstack/scan/manual"
-
-
-@pytest.fixture()
-def no_cve_matching(monkeypatch):
-    """The CVE lookup uses a PostgreSQL regex operator that SQLite (used by the
-    tests) does not have. These tests are about what happens around it."""
-    from backend.services.techstack_service import TechStackService
-
-    monkeypatch.setattr(TechStackService, "match_packages_to_cves", lambda *a, **k: [])
-
-
-def packages(n):
-    return [{"name": f"pkg{i}", "version": "1.0.0", "ecosystem": "npm"} for i in range(n)]
-
-
-# ---------------------------------------------------------------------------
-# Tech stack: limits, session ids, error texts
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.usefixtures("no_cve_matching")
-class TestTechstackLimits:
-    def test_stateless_match_has_a_package_cap(self, client):
-        r = client.post("/api/v1/techstack/match", json={"packages": packages(501)})
-        assert r.status_code == 422
-
-    def test_stateless_match_accepts_500(self, client):
-        r = client.post("/api/v1/techstack/match", json={"packages": packages(500)})
-        assert r.status_code == 200
-
-    def test_file_upload_has_a_package_cap(self, client):
-        deps = ", ".join(f'"p{i}": "1.0.0"' for i in range(501))
-        body = ('{"dependencies": {' + deps + "}}").encode()
-        r = client.post(
-            "/api/v1/techstack/scan", files={"file": ("package.json", body, "application/json")}
-        )
-        assert r.status_code == 400
-        assert "Maximum" in r.json()["detail"]
-
-    def test_package_name_length_is_limited(self, client):
-        r = client.post(
-            "/api/v1/techstack/match",
-            json={"packages": [{"name": "a" * 215, "version": "1", "ecosystem": "npm"}]},
-        )
-        assert r.status_code == 422
-
-    def test_encoded_payload_ignores_malformed_entries(self, client):
-        import base64
-        import json
-
-        payload = {"packages": ["not-a-dict", {"name": 5}, {"name": "x" * 300}]}
-        encoded = base64.b64encode(json.dumps(payload).encode()).decode()
-        r = client.post("/api/v1/techstack/scan/manual/encoded", json={"encoded": encoded})
-        assert r.status_code == 400  # nothing usable, but no 500
-
-
-@pytest.mark.usefixtures("no_cve_matching")
-class TestTechstackSessions:
-    def scan(self, client, session_id=None):
-        body = {"name": "t", "packages": packages(1)}
-        if session_id:
-            body["session_id"] = session_id
-        return client.post(SCAN, json=body)
-
-    def test_short_client_session_id_is_refused(self, client):
-        assert self.scan(client, "abc").status_code == 400
-
-    def test_long_random_client_session_id_is_accepted(self, client):
-        sid = secrets.token_hex(32)
-        r = self.scan(client, sid)
-        assert r.status_code == 200
-        assert r.json()["session_id"] == sid
-
-    def test_server_generated_session_id_is_long(self, client):
-        assert len(self.scan(client).json()["session_id"]) == 64
-
-    def test_read_needs_the_session_id(self, client):
-        r = self.scan(client)
-        stack_id, sid = r.json()["id"], r.json()["session_id"]
-        assert client.get(f"/api/v1/techstack/{stack_id}").status_code == 403
-        assert client.get(f"/api/v1/techstack/{stack_id}?session_id=wrong").status_code == 403
-        assert client.get(f"/api/v1/techstack/{stack_id}?session_id={sid}").status_code == 200
-
-    def test_delete_and_rescan_need_the_session_id(self, client):
-        r = self.scan(client)
-        stack_id, sid = r.json()["id"], r.json()["session_id"]
-        assert client.delete(f"/api/v1/techstack/{stack_id}").status_code == 403
-        assert client.post(f"/api/v1/techstack/{stack_id}/rescan").status_code == 403
-        assert client.delete(f"/api/v1/techstack/{stack_id}?session_id={sid}").status_code == 200
-
-    def test_scan_without_session_id_is_not_open_to_everyone(self, client, db_session):
-        """Older rows have no session id; they must not be readable or deletable."""
-        from backend.models import TechStack
-
-        stack = TechStack(name="legacy", source_type="x", session_id=None, package_count=0)
-        db_session.add(stack)
-        db_session.commit()
-        assert client.get(f"/api/v1/techstack/{stack.id}").status_code == 403
-        assert client.delete(f"/api/v1/techstack/{stack.id}").status_code == 403
-
-    def test_session_listing_ignores_guessable_ids(self, client):
-        self.scan(client)
-        assert client.get("/api/v1/techstack/session/1").json() == []
-
-
-@pytest.mark.usefixtures("no_cve_matching")
-class TestTechstackFiles:
-    def upload(self, client, name, content):
-        return client.post(
-            "/api/v1/techstack/scan", files={"file": (name, content, "text/plain")}
-        )
-
-    def test_parse_errors_do_not_leak_details(self, client):
-        r = self.upload(client, "package.json", b"{ this is not json")
-        assert r.status_code == 400
-        assert "Expecting" not in r.json()["detail"]
-        assert "line 1" not in r.json()["detail"]
-
-    def test_pom_with_doctype_is_refused(self, client):
-        pom = b"""<?xml version="1.0"?>
-<!DOCTYPE project [<!ENTITY a "aaaaaaaaaa"><!ENTITY b "&a;&a;&a;&a;&a;&a;&a;&a;">]>
-<project xmlns="http://maven.apache.org/POM/4.0.0"><dependencies><dependency>
-<groupId>org.example</groupId><artifactId>lib</artifactId><version>&b;</version>
-</dependency></dependencies></project>"""
-        r = self.upload(client, "pom.xml", pom)
-        assert r.status_code == 400
-
-    def test_normal_pom_still_works(self, client):
-        pom = b"""<?xml version="1.0"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"><dependencies><dependency>
-<groupId>org.example</groupId><artifactId>lib</artifactId><version>1.0</version>
-</dependency></dependencies></project>"""
-        assert self.upload(client, "pom.xml", pom).status_code == 200
-
 
 # ---------------------------------------------------------------------------
 # Status endpoints need a role
@@ -218,10 +80,17 @@ class TestAnalytics:
         assert row.country is None
         assert len(row.city) == 100
 
-    def test_stats_days_are_bounded(self, client):
-        assert client.get("/api/v1/analytics/stats?days=100000").status_code == 422
-        assert client.get("/api/v1/analytics/stats?days=0").status_code == 422
-        assert client.get("/api/v1/analytics/stats?days=30").status_code == 200
+    def test_stats_are_for_administrators_only(self, client, db_session):
+        assert client.get("/api/v1/analytics/stats?days=30").status_code in (401, 403)
+        make_user(db_session, "viewer2", UserRole.VIEWER)
+        r = client.get("/api/v1/analytics/stats?days=30", headers=h(token_of(client, "viewer2")))
+        assert r.status_code == 403
+
+    def test_stats_days_are_bounded(self, client, db_session):
+        admin = h(_admin_token(client, db_session))
+        assert client.get("/api/v1/analytics/stats?days=100000", headers=admin).status_code == 422
+        assert client.get("/api/v1/analytics/stats?days=0", headers=admin).status_code == 422
+        assert client.get("/api/v1/analytics/stats?days=30", headers=admin).status_code == 200
 
 
 # ---------------------------------------------------------------------------

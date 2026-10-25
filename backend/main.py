@@ -107,7 +107,6 @@ from .api import (
     setup,
     stats,
     tasks,
-    techstack,
     users,
     vulnerabilities,
     waitlist,
@@ -152,7 +151,6 @@ app.include_router(data_sources.router, prefix="/api/v1", tags=["Data Sources"])
 # app.include_router(cve_votes.router, prefix="/api/v1", tags=["CVE Voting"])
 # app.include_router(trending.router, prefix="/api/v1", tags=["Trending"])
 app.include_router(news.router, prefix="/api/v1", tags=["News"])
-app.include_router(techstack.router, prefix="/api/v1", tags=["Tech Stack"])
 app.include_router(analytics.router, prefix="/api/v1", tags=["Analytics"])
 
 

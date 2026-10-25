@@ -31,6 +31,15 @@ const nextConfig = {
     return [];
   },
   
+  // Old addresses: "My Stack" was replaced by "My Products", the visitor statistics moved
+  // into the administration
+  async redirects() {
+    return [
+      { source: '/my-stack', destination: '/watchlist', permanent: false },
+      { source: '/site-stats', destination: '/admin?tab=stats', permanent: false },
+    ];
+  },
+
   // Security headers for strict CSP
   async headers() {
     return [
