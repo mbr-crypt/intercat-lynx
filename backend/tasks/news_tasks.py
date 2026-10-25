@@ -11,6 +11,7 @@ import logging
 from datetime import datetime, timezone
 
 from backend.celery_app import celery_app as celery
+from backend.services.task_activity import tracked
 from backend.database import get_db
 from backend.services.news_service import get_news_service
 
@@ -18,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 @celery.task(name="tasks.fetch_news_articles", bind=True, max_retries=3)
+@tracked("fetch-news-articles")
 def fetch_news_articles_task(self) -> dict:
     """
     Fetch articles from all active news sources.
@@ -56,6 +58,7 @@ def fetch_news_articles_task(self) -> dict:
 
 
 @celery.task(name="tasks.process_news_with_llm")
+@tracked("process-news-with-llm")
 def process_news_with_llm_task(batch_size: int = 10) -> dict:
     """
     Process unprocessed news articles with LLM.

@@ -381,7 +381,9 @@ def test_activity_is_empty_without_an_import(client, db_session):
     token = _admin_token(client, db_session)
     r = client.get("/api/v1/admin/activity", headers=auth(token))
     assert r.status_code == 200
-    assert r.json() == {"activities": [], "running": False}
+    body = r.json()
+    assert body["activities"] == [] and body["running"] is False
+    assert all(t["state"] == "never" for t in body["scheduled"])
 
 
 def test_activity_shows_the_running_import_with_progress(client, db_session):

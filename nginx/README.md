@@ -140,7 +140,29 @@ upstream frontend {
 }
 ```
 
+## 🔒 Security headers
+
+`snippets/security-headers.conf` (and `security-headers-https.conf`, which adds HSTS) hold the security headers
+once. They are mounted into the nginx container at `/etc/nginx/snippets`. Every `location` that sets its own
+`add_header` has to include the file again: nginx drops all inherited `add_header` lines as soon as a location
+defines one. A test (`tests/test_prod_setup.py`) checks this.
+
 ## 🐛 Troubleshooting
+
+### Problem: the page says "Gleich geht es weiter" after an update
+
+That is the friendly error page of nginx (it answers 502/503/504 while the backend is not reachable) and it
+reloads itself every 10 seconds. During `docker compose up -d --build` it is normal for a minute or two: the
+backend containers are replaced one after the other and need a few seconds to pass their health check.
+
+If it stays longer than two minutes:
+
+```bash
+docker compose ps                  # is the backend "healthy"?
+docker compose logs --tail 50 backend
+docker compose restart nginx       # nginx looks up the container addresses once at start;
+                                   # after the backend got a new address it has to look again
+```
 
 ### Problem: "502 Bad Gateway" in nginx
 

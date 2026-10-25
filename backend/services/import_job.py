@@ -30,6 +30,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Optional
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from . import settings_service
@@ -341,6 +342,38 @@ def run_import(
         )
 
 
+# Number of the database-wide lock that serialises "may I start an import?"
+START_LOCK_ID = 7_426_001
+
+
+def _claim(session_factory: Callable[[], Session]) -> bool:
+    """Atomically take over the right to run the import.
+
+    PostgreSQL advisory lock (held until the commit): the process that gets it
+    reads the status, and if no living import is registered it writes
+    "running" with a fresh heartbeat before anyone else may look. All later
+    starters then see a living import and give up. A saved checkpoint stays
+    in the status, so a resumable run can still be resumed if the new run dies
+    right away. Other databases (tests with SQLite) skip the lock; their
+    writes are serialised anyway.
+    """
+    db = session_factory()
+    try:
+        if db.get_bind().dialect.name == "postgresql":
+            db.execute(text("SELECT pg_advisory_xact_lock(:id)"), {"id": START_LOCK_ID})
+        raw = settings_service.get(db, STATUS_KEY)
+        current = json.loads(raw) if raw else {}
+        if current.get("state") == "running" and _is_alive(current):
+            db.rollback()
+            return False
+        now = _now().isoformat()
+        current.update(state="running", started_at=now, heartbeat=now)
+        settings_service.set_value(db, STATUS_KEY, json.dumps(current))  # commit releases the lock
+        return True
+    finally:
+        db.close()
+
+
 def start_in_background(
     session_factory: Callable[[], Session],
     mode: str,
@@ -353,16 +386,11 @@ def start_in_background(
         if _running:
             return False
         # Another process of the API server may already run it (the thread
-        # lives in ONE process, the flag above only knows its own)
-        db = session_factory()
-        try:
-            raw = settings_service.get(db, STATUS_KEY)
-        finally:
-            db.close()
-        if raw:
-            current = json.loads(raw)
-            if current.get("state") == "running" and _is_alive(current):
-                return False
+        # lives in ONE process, the flag above only knows its own). Checking
+        # and claiming must be one step, otherwise two processes that get the
+        # request at the same moment both see "idle" and both start.
+        if not _claim(session_factory):
+            return False
         _running = True
 
     def target():

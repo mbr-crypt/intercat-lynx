@@ -163,9 +163,22 @@ export interface Activity extends ImportStatus {
   title: string;
 }
 
+/** Last run of a scheduled background task (Celery), see backend/services/task_activity.py */
+export interface ScheduledTask {
+  id: string;
+  title: string;
+  /** In words, for example "alle 6 Stunden" */
+  schedule: string;
+  state: "never" | "running" | "ok" | "error" | "interrupted";
+  started_at?: string;
+  finished_at?: string;
+  message?: string;
+}
+
 export interface ActivityResponse {
   activities: Activity[];
   running: boolean;
+  scheduled?: ScheduledTask[];
 }
 
 /** Settings page, see GET /admin/settings. Secrets only as "set / not set". */
