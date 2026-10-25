@@ -13,7 +13,8 @@ from sqlalchemy.orm import Session
 from user_agents import parse
 
 from ..database import get_db
-from ..models import PageView
+from ..dependencies.auth import require_admin
+from ..models import PageView, User
 
 router = APIRouter()
 
@@ -136,10 +137,12 @@ async def track_page_view(
 @router.get("/analytics/stats", response_model=AnalyticsResponse)
 async def get_analytics_stats(
     days: int = Query(30, ge=1, le=365),
+    current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     """
-    Get site analytics statistics.
+    Get site analytics statistics (administrators only, shown on the
+    "Statistik" tab of the administration).
 
     Returns comprehensive visitor statistics including:
     - Total views and unique visitors

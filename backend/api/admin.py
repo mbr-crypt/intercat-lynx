@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from ..database import SessionLocal, get_db
 from ..dependencies.auth import require_admin
 from ..models import User, Vulnerability
-from ..services import audit_service, import_job
+from ..services import audit_service, import_job, task_activity
 
 logger = logging.getLogger(__name__)
 
@@ -111,8 +111,9 @@ async def get_activity(
     """
     What the system does in the background right now (Admin only).
 
-    Currently the data import. The list is built so that further tasks (scheduled
-    updates, mail and webhook delivery) can be added without changing the page.
+    ``activities`` is the data import (the part that has a progress display).
+    ``scheduled`` is the last run of every scheduled Celery task (NVD, CISA KEV,
+    alerts, statistics, news ...), written by the worker, see ``task_activity``.
 
     **Requires:** Admin role
     """
@@ -123,6 +124,7 @@ async def get_activity(
     return {
         "activities": activities,
         "running": any(a["state"] == "running" for a in activities),
+        "scheduled": task_activity.read_all(db),
     }
 
 

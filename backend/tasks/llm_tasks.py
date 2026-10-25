@@ -10,6 +10,7 @@ import logging
 from datetime import datetime
 
 from backend.celery_app import celery_app as celery
+from backend.services.task_activity import tracked
 from backend.database import get_db
 from backend.llm_service import get_llm_service
 from backend.models import Vulnerability
@@ -180,6 +181,7 @@ def process_llm_queue(batch_size: int = 10, priority: str = "high") -> dict:
 
 
 @celery.task(name="tasks.process_new_cves")
+@tracked("process-new-cves")
 def process_new_cves() -> dict:
     """
     Process newly added CVEs (added in last hour) with LLM.

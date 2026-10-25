@@ -10,6 +10,7 @@ import logging
 from datetime import datetime
 
 from backend.celery_app import celery_app as celery
+from backend.services.task_activity import tracked
 from backend.database import get_db
 from backend.services.cisa_kev_service import get_cisa_kev_service
 from backend.services.nvd_complete_service import get_nvd_service
@@ -19,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 @celery.task(name="tasks.fetch_cisa_kev", bind=True, max_retries=3)
+@tracked("fetch-cisa-kev")
 def fetch_cisa_kev_task(self) -> dict:
     """
     Fetch CISA Known Exploited Vulnerabilities catalog.
@@ -63,6 +65,7 @@ def fetch_cisa_kev_task(self) -> dict:
 
 
 @celery.task(name="tasks.refresh_stats_cache")
+@tracked("refresh-stats-cache")
 def refresh_stats_cache_task() -> dict:
     """
     Refresh vulnerability statistics cache.
@@ -107,6 +110,7 @@ def refresh_stats_cache_task() -> dict:
 
 
 @celery.task(name="tasks.fetch_nvd_recent", bind=True, max_retries=3)
+@tracked("fetch-nvd-recent")
 def fetch_nvd_recent_task(self, days: int = 1) -> dict:
     """
     Fetch recent CVEs from NVD (modified in last N days).
@@ -146,6 +150,7 @@ def fetch_nvd_recent_task(self, days: int = 1) -> dict:
 
 
 @celery.task(name="tasks.rebuild_product_catalog")
+@tracked("rebuild-product-catalog")
 def rebuild_product_catalog_task() -> dict:
     """Recount the vendor/product list the product picker searches in."""
     from backend.services.watchlist_service import rebuild_catalog
@@ -162,6 +167,7 @@ def rebuild_product_catalog_task() -> dict:
 
 
 @celery.task(name="tasks.send_product_alerts")
+@tracked("send-product-alerts")
 def send_product_alerts_task() -> dict:
     """Send alerts (in-app, e-mail, webhook) for CVEs concerning followed products."""
     from backend.services import product_alert_service

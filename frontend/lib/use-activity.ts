@@ -12,7 +12,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { adminFetch, ApiError, type Activity, type ActivityResponse } from "./admin-api";
+import { adminFetch, ApiError, type Activity, type ActivityResponse, type ScheduledTask } from "./admin-api";
 
 const FAST_MS = 3000;
 const SLOW_MS = 30000;
@@ -21,6 +21,8 @@ const MAX_BACKOFF_MS = 60000;
 
 export interface ActivitySnapshot {
   activities: Activity[];
+  /** Scheduled background tasks (last run of each) */
+  scheduled: ScheduledTask[];
   loaded: boolean;
   /** The server did not answer the last few requests */
   connectionLost: boolean;
@@ -32,6 +34,7 @@ export interface ActivitySnapshot {
 
 const EMPTY: ActivitySnapshot = {
   activities: [],
+  scheduled: [],
   loaded: false,
   connectionLost: false,
   rateLimited: false,
@@ -107,6 +110,7 @@ class Poller {
         this.retryAfterMs = 0;
         this.emit({
           activities: data.activities,
+          scheduled: data.scheduled ?? [],
           loaded: true,
           connectionLost: false,
           rateLimited: false,
@@ -167,6 +171,7 @@ export function useActivity(token: string | null, enabled: boolean) {
   const running = snap.activities.some((a) => a.state === "running");
   return {
     activities: snap.activities,
+    scheduled: snap.scheduled,
     importActivity,
     running,
     loaded: snap.loaded,

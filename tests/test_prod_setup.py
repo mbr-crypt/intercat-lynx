@@ -235,7 +235,9 @@ def test_nginx_variants_have_identical_locations():
     https, http = _locations(NGINX_HTTPS), _locations(NGINX_HTTP)
     assert set(https) == set(http)
     for name in https:
-        assert https[name] == http[name], f"location differs: {name}"
+        # the HTTPS file includes the variant of the header file that adds HSTS
+        a = https[name].replace("security-headers-https.conf", "security-headers.conf")
+        assert a == http[name], f"location differs: {name}"
 
 
 def test_nginx_variants_share_upstreams_and_limits():
@@ -408,6 +410,12 @@ def test_nginx_does_not_leak_responses_between_users(path, tmp_path):
     threading.Thread(target=server.serve_forever, daemon=True).start()
 
     conf = path.read_text()
+    # the shared header files (the HTTPS one includes the plain one by absolute path)
+    snippets = tmp_path / "snippets"
+    snippets.mkdir()
+    for f in (NGINX_HTTPS.parent / "snippets").glob("*.conf"):
+        (snippets / f.name).write_text(f.read_text().replace("/etc/nginx/snippets", str(snippets)))
+    conf = conf.replace("/etc/nginx/snippets", str(snippets))
     # workers write the cache into tmp_path: run them as the current user
     conf = re.sub(r"(?m)^user nginx;", "user root;" if os.geteuid() == 0 else "", conf)
     conf = conf.replace("/var/run/nginx.pid", str(tmp_path / "nginx.pid"))
@@ -416,7 +424,8 @@ def test_nginx_does_not_leak_responses_between_users(path, tmp_path):
     conf = conf.replace("backend:8001", f"127.0.0.1:{stub_port}")
     conf = conf.replace("frontend:3000", f"127.0.0.1:{stub_port}")
     if "listen 443" in conf:  # HTTPS variant: serve the application server over plain HTTP
-        conf = conf.replace("listen 443 ssl http2;", f"listen {web_port};")
+        conf = conf.replace("listen 443 ssl;", f"listen {web_port};")
+        conf = conf.replace("http2 on;", "")  # needs nginx 1.25.1, the image has it, a local one may not
         conf = re.sub(r"(?m)^\s*ssl_\w+ .*;$", "", conf)
         conf = conf.replace("listen 80;", f"listen {free_port()};")
     else:
@@ -459,6 +468,13 @@ def test_nginx_does_not_leak_responses_between_users(path, tmp_path):
         assert one["call"] == two["call"] and status_two == "HIT"
         _, with_auth = get("/api/v1/stats", Authorization="Bearer ALICE")
         assert with_auth == "BYPASS"
+
+        # A location with its own add_header drops every header of the server
+        # block. The security headers must still be there everywhere.
+        for url in ("/", "/api/v1/stats", "/api/v1/search", "/_next/static/a.js", "/logo.png"):
+            with urllib.request.urlopen(base + url, timeout=5) as r:
+                for header in ("X-Frame-Options", "Content-Security-Policy", "X-Content-Type-Options"):
+                    assert r.headers.get(header), f"{header} missing on {url}"
     finally:
         subprocess.run(["nginx", "-c", str(cfg), "-s", "stop"], capture_output=True)
         server.shutdown()
@@ -496,3 +512,19 @@ def test_init_env_reports_a_failed_certificate_instead_of_stopping_silently(proj
     assert "certificate could not be created" in r.stderr and "Permission denied" in r.stderr
     if os.geteuid() != 0:  # root can always write, so the hint only applies to normal users
         assert "chown" in r.stderr
+
+
+@pytest.mark.parametrize("path", [NGINX_HTTPS, NGINX_HTTP])
+def test_every_location_with_add_header_includes_the_security_headers(path):
+    """nginx: add_header in a location replaces ALL inherited add_header lines."""
+    wanted = "security-headers-https.conf" if path == NGINX_HTTPS else "security-headers.conf"
+    for name, body in _locations(path).items():
+        if "add_header" in body:
+            assert f"include /etc/nginx/snippets/{wanted}" in body, name
+
+
+def test_https_server_uses_http2_directive_not_the_listen_parameter():
+    """"listen ... http2" is deprecated since nginx 1.25.1 and logs a warning."""
+    code = re.sub(r"#.*", "", NGINX_HTTPS.read_text())
+    assert "http2 on;" in code
+    assert not re.search(r"listen\s+443\s+ssl\s+http2", code)

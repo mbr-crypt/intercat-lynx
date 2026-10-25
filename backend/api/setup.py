@@ -33,7 +33,7 @@ from sqlalchemy.orm import Session
 
 from ..database import SessionLocal, get_db
 from ..models import AppSetting, User, UserRole
-from ..security import crypto
+from ..security import attempt_limit, crypto
 from ..services import import_job, settings_service
 from ..services.email_service import email_service
 from ..utils.auth import get_password_hash
@@ -118,6 +118,9 @@ def announce_setup_token() -> None:
             logger.info("Existing admin found - setup assistant not needed")
             return
         token = ensure_token(db)
+        # 2 replicas x 2 workers all run this; one message in the log is enough
+        if not attempt_limit.claim_once("setup-token-announced", 60):
+            return
         logger.warning(
             "\n" + "=" * 64 + "\n"
             "  InterCat Lynx is not set up yet.\n"

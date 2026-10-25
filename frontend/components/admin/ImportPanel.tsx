@@ -3,14 +3,14 @@
 /** "Daten" tab of the administration: start an NVD import and watch it. */
 
 import { useState } from "react";
-import { adminFetch } from "@/lib/admin-api";
+import { adminFetch, type ScheduledTask } from "@/lib/admin-api";
 import { useActivity } from "@/lib/use-activity";
 import { IMPORT_DAY_OPTIONS as DAY_OPTIONS, ImportProgress } from "@/components/ImportProgress";
 
 type Mode = "recent" | "full";
 
 export function ImportPanel({ token }: { token: string }) {
-  const { importActivity, running, connectionLost, rateLimited, receivedAt, refresh } = useActivity(token, true);
+  const { importActivity, scheduled, running, connectionLost, rateLimited, receivedAt, refresh } = useActivity(token, true);
   const [mode, setMode] = useState<Mode>("recent");
   const [days, setDays] = useState(7);
   const [error, setError] = useState("");
@@ -112,6 +112,64 @@ export function ImportPanel({ token }: { token: string }) {
           <ImportProgress status={importActivity} receivedAt={receivedAt} connectionLost={connectionLost} rateLimited={rateLimited} />
         </section>
       )}
+
+      <ScheduledTasks tasks={scheduled} />
     </div>
+  );
+}
+
+const STATE_LABEL: Record<ScheduledTask["state"], { text: string; className: string }> = {
+  never: { text: "noch nicht gelaufen", className: "text-gray-500" },
+  running: { text: "läuft", className: "text-blue-600 dark:text-blue-400" },
+  ok: { text: "in Ordnung", className: "text-green-700 dark:text-green-400" },
+  error: { text: "Fehler", className: "text-red-600 dark:text-red-400" },
+  interrupted: { text: "unterbrochen", className: "text-amber-700 dark:text-amber-400" },
+};
+
+function formatTime(iso?: string): string {
+  if (!iso) return "–";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "–" : d.toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" });
+}
+
+/** Last run of every scheduled background task (Celery worker). */
+function ScheduledTasks({ tasks }: { tasks: ScheduledTask[] }) {
+  if (tasks.length === 0) return null;
+  return (
+    <section className="rounded-2xl bg-white p-6 dark:bg-gray-800" aria-label="Geplante Aufgaben">
+      <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Geplante Aufgaben</h2>
+      <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+        Das läuft regelmäßig von selbst im Hintergrund (Celery, ein Zeitplaner im Worker-Container). Hier steht, wann
+        jede Aufgabe zuletzt gelaufen ist und wie sie ausging.
+      </p>
+      <div className="mt-4 overflow-x-auto">
+        <table className="w-full min-w-[40rem] text-left text-sm">
+          <thead>
+            <tr className="border-b border-gray-200 text-gray-500 dark:border-gray-700">
+              <th className="py-2 pr-4 font-medium">Aufgabe</th>
+              <th className="py-2 pr-4 font-medium">Zeitplan</th>
+              <th className="py-2 pr-4 font-medium">Zuletzt</th>
+              <th className="py-2 font-medium">Ergebnis</th>
+            </tr>
+          </thead>
+          <tbody>
+            {tasks.map((t) => {
+              const label = STATE_LABEL[t.state] ?? STATE_LABEL.never;
+              return (
+                <tr key={t.id} className="border-b border-gray-100 align-top last:border-0 dark:border-gray-700/60">
+                  <td className="py-2 pr-4 text-gray-900 dark:text-white">{t.title}</td>
+                  <td className="py-2 pr-4 text-gray-600 dark:text-gray-400">{t.schedule}</td>
+                  <td className="py-2 pr-4 text-gray-600 dark:text-gray-400">{formatTime(t.finished_at ?? t.started_at)}</td>
+                  <td className="py-2">
+                    <span className={`font-medium ${label.className}`}>{label.text}</span>
+                    {t.message && <span className="ml-2 text-gray-500">{t.message}</span>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }

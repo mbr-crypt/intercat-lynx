@@ -46,6 +46,25 @@ def _redis_failed(error: Exception) -> None:
     logger.warning("Attempt limiter: Redis unavailable, using memory (%s)", error)
 
 
+def claim_once(name: str, ttl_seconds: int) -> bool:
+    """
+    True for exactly one of several processes within ``ttl_seconds``.
+
+    Used for things that should happen once per start of the stack although
+    every backend process runs the start-up code (for example printing the
+    setup token). Without Redis every caller gets True: better a message too
+    many than none.
+    """
+    client = _redis()
+    if client is None:
+        return True
+    try:
+        return bool(client.set(f"once:{name}", "1", nx=True, ex=ttl_seconds))
+    except redis.RedisError as e:
+        _redis_failed(e)
+        return True
+
+
 class AttemptLimiter:
     """At most ``max_attempts`` events per key within ``window_seconds``."""
 

@@ -7,8 +7,9 @@ import { UsersPanel } from "@/components/admin/UsersPanel";
 import { AuditPanel } from "@/components/admin/AuditPanel";
 import { ImportPanel } from "@/components/admin/ImportPanel";
 import { SettingsPanel } from "@/components/admin/SettingsPanel";
+import { StatsPanel } from "@/components/admin/StatsPanel";
 
-type Tab = "users" | "audit" | "data" | "settings";
+type Tab = "users" | "audit" | "data" | "stats" | "settings";
 
 export default function AdminPage() {
   const { user, token, isLoading } = useAuth();
@@ -22,7 +23,7 @@ export default function AdminPage() {
   // The activity icon in the header links to /admin?tab=data
   useEffect(() => {
     const wanted = new URLSearchParams(window.location.search).get("tab");
-    if (wanted === "data" || wanted === "audit" || wanted === "users" || wanted === "settings") setTab(wanted);
+    if (wanted === "data" || wanted === "stats" || wanted === "audit" || wanted === "users" || wanted === "settings") setTab(wanted);
   }, []);
 
   if (isLoading || !user || !token) return null;
@@ -65,6 +66,9 @@ export default function AdminPage() {
         <button role="tab" aria-selected={tab === "data"} className={tabClass("data")} onClick={() => setTab("data")}>
           Daten
         </button>
+        <button role="tab" aria-selected={tab === "stats"} className={tabClass("stats")} onClick={() => setTab("stats")}>
+          Statistik
+        </button>
         <button role="tab" aria-selected={tab === "settings"} className={tabClass("settings")} onClick={() => setTab("settings")}>
           Einstellungen
         </button>
@@ -76,6 +80,8 @@ export default function AdminPage() {
         <AuditPanel token={token} />
       ) : tab === "data" ? (
         <ImportPanel token={token} />
+      ) : tab === "stats" ? (
+        <StatsPanel token={token} />
       ) : (
         <SettingsPanel token={token} />
       )}
