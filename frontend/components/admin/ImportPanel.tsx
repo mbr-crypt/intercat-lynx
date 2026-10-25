@@ -5,6 +5,7 @@
 import { useState } from "react";
 import { adminFetch, type ScheduledTask } from "@/lib/admin-api";
 import { useActivity } from "@/lib/use-activity";
+import { BsiCard } from "@/components/admin/BsiCard";
 import { IMPORT_DAY_OPTIONS as DAY_OPTIONS, ImportProgress } from "@/components/ImportProgress";
 
 type Mode = "recent" | "full";
@@ -112,6 +113,8 @@ export function ImportPanel({ token }: { token: string }) {
           <ImportProgress status={importActivity} receivedAt={receivedAt} connectionLost={connectionLost} rateLimited={rateLimited} />
         </section>
       )}
+
+      <BsiCard token={token} />
 
       <ScheduledTasks tasks={scheduled} />
     </div>

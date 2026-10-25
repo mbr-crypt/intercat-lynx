@@ -163,7 +163,7 @@ We aggregate data from trusted public sources:
 |--------|-------------|------------------|
 | [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) | Known Exploited Vulnerabilities | Daily |
 | [NVD](https://nvd.nist.gov/) | National Vulnerability Database | Every 2 hours |
-| BSI CERT-Bund | German Security Advisories | planned, see [docs/BSI_INTEGRATION.md](docs/BSI_INTEGRATION.md) |
+| BSI CERT-Bund | German Security Advisories (CSAF feed, index data with link to the original) | every 3 hours, see [docs/BSI_INTEGRATION.md](docs/BSI_INTEGRATION.md) |
 
 ## 🏗️ Architecture
 

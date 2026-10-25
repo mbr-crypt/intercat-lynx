@@ -849,6 +849,58 @@ class NewsArticle(Base):
         return f"<NewsArticle(title={self.title[:50]}...)>"
 
 
+class BsiAdvisory(Base):
+    """
+    Warning of the BSI CERT-Bund (WID, "Warn- und Informationsdienst").
+
+    Only the index data is kept (number, title, severity, dates, CVE numbers,
+    affected products) together with the link to the original. The text of the
+    warning stays at the BSI, so nothing is mirrored.
+    """
+
+    __tablename__ = "bsi_advisories"
+
+    id = Column(Integer, primary_key=True, index=True)
+    advisory_id = Column(String(60), unique=True, nullable=False, index=True)
+    title = Column(String(500), nullable=False)
+    severity = Column(String(20), nullable=True, index=True)  # kritisch/hoch/mittel/niedrig
+    published_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    updated_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    url = Column(String(500), nullable=False)  # portal page at the BSI
+    csaf_url = Column(String(500), nullable=True)  # the CSAF document
+    feed_updated_at = Column(DateTime(timezone=True), nullable=True)  # change date in the feed
+    products = Column(JSON, nullable=True)  # ["Microsoft Windows", ...] (short list)
+    cve_count = Column(Integer, default=0, nullable=False)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    cves = relationship(
+        "BsiAdvisoryCve", back_populates="advisory", cascade="all, delete-orphan"
+    )
+
+    def __repr__(self):
+        return f"<BsiAdvisory({self.advisory_id})>"
+
+
+class BsiAdvisoryCve(Base):
+    """One CVE number mentioned by a BSI warning (own table so CVE pages can look it up)."""
+
+    __tablename__ = "bsi_advisory_cves"
+
+    id = Column(Integer, primary_key=True)
+    advisory_id = Column(
+        Integer, ForeignKey("bsi_advisories.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    cve_id = Column(String(20), nullable=False, index=True)
+
+    advisory = relationship("BsiAdvisory", back_populates="cves")
+
+    __table_args__ = (Index("uq_bsi_advisory_cve", "advisory_id", "cve_id", unique=True),)
+
+
 class WaitlistEntry(Base):
     """
     Waitlist entries for beta launch signups.

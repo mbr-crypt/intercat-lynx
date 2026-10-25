@@ -95,6 +95,7 @@ from .api import (
     api_tokens,
     auth,
     bookmarks,
+    bsi,
     comments,
     csrf,
     feeds,
@@ -127,6 +128,7 @@ app.include_router(admin_settings.router, prefix="/api/v1/admin/settings", tags=
 app.include_router(branding.router, prefix="/api/v1/branding", tags=["Branding"])
 app.include_router(api_tokens.router, prefix="/api/v1/api-tokens", tags=["API tokens"])
 app.include_router(zabbix.router, prefix="/api/v1/zabbix", tags=["Zabbix"])
+app.include_router(bsi.router, prefix="/api/v1/bsi", tags=["BSI CERT-Bund"])
 app.include_router(
     notification_settings.router,
     prefix="/api/v1/notification-settings",

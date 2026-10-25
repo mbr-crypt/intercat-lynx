@@ -43,13 +43,33 @@ async function fetchVulnerability(cveId: string): Promise<VulnerabilityDetail> {
   return res.json();
 }
 
+interface BsiHit {
+  advisory_id: string;
+  title: string;
+  severity: string | null;
+  updated_at: string | null;
+  url: string;
+}
+
+/** Warnings of the BSI that mention this CVE. Never breaks the page. */
+async function fetchBsiHits(cveId: string): Promise<BsiHit[]> {
+  try {
+    const res = await fetch(`${getApiUrl()}/api/v1/bsi/cve/${encodeURIComponent(cveId)}`, {
+      next: { revalidate: 1800 },
+    });
+    return res.ok ? await res.json() : [];
+  } catch {
+    return [];
+  }
+}
+
 export default async function VulnerabilityDetailPage({
   params,
 }: {
   params: Promise<{ cveId: string }>;
 }) {
   const { cveId } = await params;
-  const vuln = await fetchVulnerability(cveId);
+  const [vuln, bsiHits] = await Promise.all([fetchVulnerability(cveId), fetchBsiHits(cveId)]);
   const displayTitle = vuln.simple_title || vuln.title;
   const actionPlan = generateActionPlan(vuln);
 
@@ -94,6 +114,17 @@ export default async function VulnerabilityDetailPage({
                 </Badge>
                 <Tooltip content={`${explainExploitation(vuln.exploited_in_the_wild).simple} - ${explainExploitation(vuln.exploited_in_the_wild).whatItMeans}`} />
               </div>
+            )}
+            {bsiHits.length > 0 && (
+              <a
+                href="#bsi"
+                title="Zu diesem CVE gibt es eine Warnmeldung des BSI CERT-Bund"
+                className="inline-flex"
+              >
+                <Badge className="bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-700">
+                  BSI CERT-Bund
+                </Badge>
+              </a>
             )}
           </div>
 
@@ -280,6 +311,35 @@ export default async function VulnerabilityDetailPage({
                 </div>
               </div>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* BSI CERT-Bund */}
+      {bsiHits.length > 0 && (
+        <Card id="bsi">
+          <CardHeader>
+            <CardTitle>BSI CERT-Bund</CardTitle>
+            <CardDescription>
+              Warnmeldungen des Bundesamts für Sicherheit in der Informationstechnik zu diesem CVE
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-3">
+              {bsiHits.map((hit) => (
+                <li key={hit.advisory_id} className="flex items-start space-x-3">
+                  <ExternalLink className="h-4 w-4 text-gray-400 dark:text-gray-500 mt-1 flex-shrink-0" />
+                  <div className="flex-1">
+                    <a href={hit.url} target="_blank" rel="noopener noreferrer" className="text-link hover:underline font-mono">
+                      {hit.advisory_id}
+                    </a>
+                    {hit.severity && <span className="ml-2 text-sm text-gray-600 dark:text-gray-400">Einstufung: {hit.severity}</span>}
+                    <p className="text-sm text-gray-700 dark:text-gray-300">{hit.title}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-3 text-xs text-gray-500">Quelle: BSI, CERT-Bund. Der Text der Meldung steht beim BSI.</p>
           </CardContent>
         </Card>
       )}

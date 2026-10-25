@@ -31,6 +31,7 @@ STALE_AFTER = timedelta(hours=2)
 SCHEDULED: Dict[str, tuple] = {
     "fetch-nvd-recent": ("NVD: neue und geänderte CVEs holen", "alle 6 Stunden"),
     "fetch-cisa-kev": ("CISA KEV: aktiv ausgenutzte Lücken abgleichen", "täglich 09:00 UTC"),
+    "fetch-bsi-csaf": ("BSI CERT-Bund: Warnmeldungen holen", "alle 3 Stunden"),
     "send-product-alerts": ("Benachrichtigungen zu beobachteten Produkten", "alle 10 Minuten"),
     "rebuild-product-catalog": ("Produktkatalog neu zählen", "täglich 03:30 UTC"),
     "refresh-stats-cache": ("Statistik-Zwischenspeicher aktualisieren", "alle 5 Minuten"),

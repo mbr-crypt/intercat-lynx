@@ -180,3 +180,20 @@ def send_product_alerts_task() -> dict:
         return {"status": "error", "message": f"{type(e).__name__}"}
     finally:
         db.close()
+
+
+@celery.task(name="tasks.fetch_bsi_csaf")
+@tracked("fetch-bsi-csaf")
+def fetch_bsi_csaf_task() -> dict:
+    """Take over new and changed warnings of the BSI CERT-Bund (CSAF feed)."""
+    from backend.services import bsi_service
+
+    db = next(get_db())
+    try:
+        return bsi_service.run(db)
+    except Exception as e:  # noqa: BLE001
+        # only the type: messages of network libraries can contain addresses
+        logger.error("BSI CSAF fetch failed: %s", type(e).__name__)
+        return {"status": "error", "message": type(e).__name__}
+    finally:
+        db.close()
