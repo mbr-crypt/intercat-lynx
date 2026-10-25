@@ -431,7 +431,7 @@ function SettingsStep({ call, onSaved }: { call: Call; onSaved: (registration: b
     <Card>
       <CardHeader>
         <CardTitle>Einstellungen</CardTitle>
-        <CardDescription>Alles optional. Passwörter und Schlüssel werden verschlüsselt gespeichert. Eine Einstellungsseite für später gibt es noch nicht; bis dahin lassen sich die Werte in der Datei .env ändern.</CardDescription>
+        <CardDescription>Alles optional. Passwörter und Schlüssel werden verschlüsselt gespeichert. Später lässt sich alles unter Administration → Einstellungen ändern.</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={save} className="space-y-6">

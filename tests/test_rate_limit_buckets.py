@@ -65,7 +65,11 @@ def test_other_addresses_are_not_affected(limiter):
 
 
 def test_only_the_cheap_status_endpoints_are_in_the_status_bucket():
-    assert STATUS_PATHS == {"/api/v1/admin/activity", "/api/v1/setup/import/status"}
+    assert STATUS_PATHS == {
+        "/api/v1/admin/activity",
+        "/api/v1/setup/import/status",
+        "/api/v1/branding",  # read by the web server for every page it draws
+    }
 
 
 def test_middleware_sends_activity_polls_to_the_status_bucket(client, limiter):

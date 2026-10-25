@@ -42,6 +42,11 @@ body {
     --ring: 208 68% 42%;
     --link: 208 68% 42%;               /* brand blue is fine as text on white */
     --radius: 0.5rem;                  /* buttons 8 px */
+    /* Blue scale steps that follow the accent colour of the instance (RGB channels) */
+    --blue-400: 127 203 255;           /* #7fcbff */
+    --blue-500: 43 127 196;            /* #2b7fc4 */
+    --blue-600: 34 113 179;            /* #2271b3 */
+    --blue-700: 29 98 160;             /* #1d62a0 */
   }
 
   .dark {

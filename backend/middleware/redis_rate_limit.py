@@ -20,8 +20,9 @@ logger = logging.getLogger(__name__)
 # Status pages poll their endpoint every few seconds while an import runs. They get a
 # budget of their own, otherwise a single open browser tab would use up the limit of the
 # whole address (and with it the login). The endpoints are cheap reads; unauthenticated
-# calls are rejected before any work is done.
-STATUS_PATHS = {"/api/v1/admin/activity", "/api/v1/setup/import/status"}
+# calls are rejected before any work is done. The branding is read by the web server
+# for every page it draws (from one address), so it must not use up the general budget either.
+STATUS_PATHS = {"/api/v1/admin/activity", "/api/v1/setup/import/status", "/api/v1/branding"}
 STATUS_BUCKET = "status"
 
 

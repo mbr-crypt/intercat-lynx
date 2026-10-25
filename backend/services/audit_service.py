@@ -27,6 +27,11 @@ USER_2FA_RESET = "user.2fa_reset"
 USER_SESSIONS_REVOKED = "user.sessions_revoked"
 SETTING_REGISTRATION = "setting.registration"
 IMPORT_STARTED = "import.started"
+SETTING_SMTP = "setting.smtp"
+SETTING_SMTP_TEST = "setting.smtp_test"
+SETTING_NVD_KEY = "setting.nvd_key"
+SETTING_PUBLIC_URL = "setting.public_url"
+SETTING_BRANDING = "setting.branding"
 
 
 def record(
