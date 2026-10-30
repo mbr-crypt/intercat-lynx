@@ -1,5 +1,7 @@
 /** Calls to the product selection API (/api/v1/watchlist) with the bearer token. */
 
+import { authFetch } from "@/lib/authed-fetch";
+
 export interface Watch {
   id: number;
   vendor: string;
@@ -182,7 +184,7 @@ export async function fetchTrend(
 ): Promise<TrendData> {
   const query = `period=${period}&days=${days}`;
   if (token) return apiFetch<TrendData>(token, `/api/v1/watchlist/trend?${query}`);
-  const response = await fetch(`/api/v1/stats/trend?${query}`);
+  const response = await authFetch(`/api/v1/stats/trend?${query}`);
   const body = await response.json().catch(() => null);
   if (!response.ok) throw new Error(messageOf(body, `Fehler ${response.status}`));
   return body as TrendData;

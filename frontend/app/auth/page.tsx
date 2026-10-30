@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { safeNext } from '@/lib/authed-fetch';
 import { KeyRound } from 'lucide-react';
 import { LynxMark } from '@/components/LynxMark';
 import { useAuth } from '@/lib/auth-context';
@@ -32,7 +33,7 @@ export default function AuthPage() {
         setMfaToken(result.mfaToken ?? null);
         setPassword('');
       } else {
-        router.push('/');
+        router.push(safeNext(new URLSearchParams(window.location.search).get('next')));
       }
     } catch (err: any) {
       setError(err.message);
@@ -48,7 +49,7 @@ export default function AuthPage() {
     setLoading(true);
     try {
       await loginWithCode(mfaToken, code);
-      router.push('/');
+      router.push(safeNext(new URLSearchParams(window.location.search).get('next')));
     } catch (err: any) {
       setError(err.message);
       setCode('');

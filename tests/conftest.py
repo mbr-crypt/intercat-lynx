@@ -21,6 +21,7 @@ from sqlalchemy.pool import StaticPool
 
 from backend.main import app
 from backend.database import get_db, Base
+from backend.dependencies.auth import require_login
 from backend.models import Vulnerability
 
 
@@ -100,7 +101,12 @@ def client(db_session):
             pass
     
     app.dependency_overrides[get_db] = override_get_db
-    
+    # The data endpoints need a signed-in user (router guard require_login). Most
+    # tests are about what the endpoints return, not about the login, so the
+    # guard is switched off here. tests/test_login_required.py switches it back
+    # on (fixture ``login_required``) and checks it for every route.
+    app.dependency_overrides[require_login] = lambda: None
+
     with TestClient(app) as test_client:
         yield test_client
     

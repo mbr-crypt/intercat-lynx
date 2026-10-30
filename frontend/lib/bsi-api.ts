@@ -1,6 +1,7 @@
 /** BSI CERT-Bund warnings (/api/v1/bsi). Reading is public, switch and fetch are admin only. */
 
 import { ApiError } from "@/lib/admin-api";
+import { authFetch } from "@/lib/authed-fetch";
 
 export interface BsiAdvisory {
   advisory_id: string;
@@ -50,7 +51,7 @@ export async function fetchBsiPage(
   const query = new URLSearchParams({ page: String(params.page), page_size: "25" });
   if (params.severity) query.set("severity", params.severity);
   if (params.q) query.set("q", params.q);
-  const response = await fetch(`/api/v1/bsi/advisories?${query}`, { signal });
+  const response = await authFetch(`/api/v1/bsi/advisories?${query}`, { signal });
   if (!response.ok) throw new ApiError(`Fehler ${response.status}`, response.status);
   return response.json();
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { apiBase } from "@/lib/config";
+import { authFetch } from "@/lib/authed-fetch";
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -87,9 +88,9 @@ export default function NewsPage() {
       }
 
       const [articlesRes, sourcesRes, statsRes] = await Promise.all([
-        fetch(articlesUrl),
-        fetch(`${API_URL}/api/v1/news/sources`),
-        fetch(`${API_URL}/api/v1/news/stats`),
+        authFetch(articlesUrl),
+        authFetch(`${API_URL}/api/v1/news/sources`),
+        authFetch(`${API_URL}/api/v1/news/stats`),
       ]);
 
       if (articlesRes.ok) {
