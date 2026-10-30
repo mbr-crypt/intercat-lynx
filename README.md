@@ -108,7 +108,7 @@ docker compose ps                  # state and health of all services
 docker compose restart backend     # after editing .env: docker compose up -d
 docker compose down                # stop (data stays in volumes)
 docker compose down -v             # stop AND delete the database (start over)
-git pull && docker compose up -d --build   # update
+./deploy.sh                      # update (pull, rebuild, restart incl. nginx)
 ```
 
 ### Something does not start?

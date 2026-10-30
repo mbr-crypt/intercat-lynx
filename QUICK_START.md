@@ -90,7 +90,7 @@ docker compose logs -f backend             # follow the log (also: frontend, ngi
 docker compose up -d                       # apply changes made in .env
 docker compose down                        # stop, data stays
 docker compose down -v                     # stop and DELETE all data (database, Redis)
-git pull && docker compose up -d --build   # update to the newest version
+./deploy.sh                                # update to the newest version (pull, rebuild, restart incl. nginx)
 ```
 
 ## Common problems

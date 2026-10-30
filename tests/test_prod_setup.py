@@ -536,3 +536,10 @@ def test_nginx_is_restarted_together_with_the_services_it_proxies():
     depends = _compose()["services"]["nginx"]["depends_on"]
     for name in ("backend", "frontend"):
         assert depends[name].get("restart") is True, name
+
+
+def test_update_script_restarts_nginx_and_waits_for_the_site():
+    script = (ROOT / "deploy.sh").read_text()
+    assert "docker compose restart nginx" in script
+    assert script.index("docker compose up -d --wait") < script.index("docker compose restart nginx")
+    assert "/health" in script and "sleep" in script
