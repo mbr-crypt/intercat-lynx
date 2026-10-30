@@ -528,3 +528,11 @@ def test_https_server_uses_http2_directive_not_the_listen_parameter():
     code = re.sub(r"#.*", "", NGINX_HTTPS.read_text())
     assert "http2 on;" in code
     assert not re.search(r"listen\s+443\s+ssl\s+http2", code)
+
+
+def test_nginx_is_restarted_together_with_the_services_it_proxies():
+    """nginx resolves backend/frontend once at start; without this the site shows
+    "gleich geht es weiter" after every `docker compose up -d --build`."""
+    depends = _compose()["services"]["nginx"]["depends_on"]
+    for name in ("backend", "frontend"):
+        assert depends[name].get("restart") is True, name
