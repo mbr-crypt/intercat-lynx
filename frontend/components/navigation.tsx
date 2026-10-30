@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { LynxMark } from "./LynxMark";
 import { SOURCE_URL } from "@/lib/branding";
 import { useBrand } from "@/lib/brand-context";
+import { useAuth } from "@/lib/auth-context";
 import UserMenu from "./user-menu";
 import { NotificationCenter } from "./NotificationCenter";
 import { ActivityIndicator } from "./ActivityIndicator";
@@ -16,15 +17,18 @@ import { useState } from "react";
 export function Navigation() {
   const pathname = usePathname();
   const brand = useBrand();
+  const { isAuthenticated } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const links = [
+  // The whole site is for signed-in users: visitors only see the way to sign in
+  const allLinks = [
     { href: "/", label: "Dashboard", icon: BarChart3 },
     { href: "/watchlist", label: "My Products", icon: Crosshair, isNew: true },
     { href: "/news", label: "News", icon: Newspaper },
     { href: "/bsi", label: "BSI", icon: ShieldAlert },
     { href: "/about", label: "About", icon: Info },
   ];
+  const links = isAuthenticated ? allLinks : [];
 
   // The setup assistant runs without site navigation
   if (pathname.startsWith("/setup")) return null;

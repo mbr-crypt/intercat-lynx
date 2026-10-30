@@ -116,6 +116,17 @@ async def get_current_active_user(
     return current_user
 
 
+async def require_login(current_user: User = Depends(get_current_user)) -> User:
+    """
+    Guard for a whole router: the site is for signed-in users only.
+
+    Only login, registration, the setup assistant, the branding (the login page
+    needs it) and the health checks stay open (see tests/test_login_required.py,
+    which fails when a new route is left open by accident).
+    """
+    return current_user
+
+
 def require_role(required_role: UserRole):
     """
     Dependency factory to require specific user role.

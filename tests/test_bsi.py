@@ -287,7 +287,7 @@ def stored(db_session):
     run(db_session, fake)
 
 
-def test_list_is_public_newest_first_with_source(client, stored):
+def test_list_is_newest_first_with_source(client, stored):
     r = client.get("/api/v1/bsi/advisories")
     assert r.status_code == 200
     body = r.json()

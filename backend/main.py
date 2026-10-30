@@ -115,6 +115,7 @@ from .api import (
     zabbix,
 )
 from .api.v1 import data_sources, llm
+from .dependencies.auth import require_login
 
 app.include_router(health.router, tags=["Health"])
 app.include_router(waitlist.router, prefix="/api/v1/waitlist", tags=["Waitlist"])
@@ -128,7 +129,9 @@ app.include_router(admin_settings.router, prefix="/api/v1/admin/settings", tags=
 app.include_router(branding.router, prefix="/api/v1/branding", tags=["Branding"])
 app.include_router(api_tokens.router, prefix="/api/v1/api-tokens", tags=["API tokens"])
 app.include_router(zabbix.router, prefix="/api/v1/zabbix", tags=["Zabbix"])
-app.include_router(bsi.router, prefix="/api/v1/bsi", tags=["BSI CERT-Bund"])
+app.include_router(
+    bsi.router, prefix="/api/v1/bsi", tags=["BSI CERT-Bund"], dependencies=[Depends(require_login)]
+)
 app.include_router(
     notification_settings.router,
     prefix="/api/v1/notification-settings",
@@ -137,22 +140,26 @@ app.include_router(
 app.include_router(
     watchlist.router, prefix="/api/v1/watchlist", tags=["Product selection"]
 )
-app.include_router(vulnerabilities.router, prefix="/api/v1", tags=["Vulnerabilities"])
+app.include_router(
+    vulnerabilities.router, prefix="/api/v1", tags=["Vulnerabilities"], dependencies=[Depends(require_login)]
+)
 app.include_router(comments.router, prefix="/api/v1", tags=["Comments"])
 app.include_router(bookmarks.router, prefix="/api/v1", tags=["Bookmarks"])
 app.include_router(notifications.router, prefix="/api/v1", tags=["Notifications"])
-app.include_router(stats.router, prefix="/api/v1", tags=["Statistics"])
-app.include_router(search.router, prefix="/api/v1", tags=["Search"])
-app.include_router(feeds.router, prefix="/api/v1", tags=["Feeds"])
+app.include_router(stats.router, prefix="/api/v1", tags=["Statistics"], dependencies=[Depends(require_login)])
+app.include_router(search.router, prefix="/api/v1", tags=["Search"], dependencies=[Depends(require_login)])
+app.include_router(feeds.router, prefix="/api/v1", tags=["Feeds"], dependencies=[Depends(require_login)])
 app.include_router(tasks.router, prefix="/api/v1", tags=["Tasks"])
 app.include_router(llm.router, prefix="/api/v1", tags=["LLM Processing"])
-app.include_router(data_sources.router, prefix="/api/v1", tags=["Data Sources"])
+app.include_router(
+    data_sources.router, prefix="/api/v1", tags=["Data Sources"], dependencies=[Depends(require_login)]
+)
 # CVE voting and trending are disconnected - both require login, which the
 # site doesn't offer right now. Routes are kept but unregistered rather than
 # deleted so they're easy to bring back if accounts return.
 # app.include_router(cve_votes.router, prefix="/api/v1", tags=["CVE Voting"])
 # app.include_router(trending.router, prefix="/api/v1", tags=["Trending"])
-app.include_router(news.router, prefix="/api/v1", tags=["News"])
+app.include_router(news.router, prefix="/api/v1", tags=["News"], dependencies=[Depends(require_login)])
 app.include_router(analytics.router, prefix="/api/v1", tags=["Analytics"])
 
 

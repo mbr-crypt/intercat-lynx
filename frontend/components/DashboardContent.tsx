@@ -1,6 +1,7 @@
 "use client";
 
 import { apiBase } from "@/lib/config";
+import { authFetch } from "@/lib/authed-fetch";
 import { useState, useEffect, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -61,7 +62,7 @@ export function DashboardContent() {
         return;
       }
 
-      const res = await fetch(`${CLIENT_API_URL}/api/v1/vulnerabilities?page_size=20&sort_by=published_at&sort_order=desc`);
+      const res = await authFetch(`${CLIENT_API_URL}/api/v1/vulnerabilities?page_size=20&sort_by=published_at&sort_order=desc`);
       const vulnsData = await res.json();
 
       setCachedData('vulns:default', vulnsData);
@@ -86,7 +87,7 @@ export function DashboardContent() {
         if (newSeverity) params.append("severity", newSeverity);
         if (newExploited) params.append("exploited", newExploited);
 
-        const res = await fetch(`${CLIENT_API_URL}/api/v1/search?${params}`);
+        const res = await authFetch(`${CLIENT_API_URL}/api/v1/search?${params}`);
         if (res.ok) {
           const data = await res.json();
           setRecentVulns(data);
@@ -113,7 +114,7 @@ export function DashboardContent() {
         if (newSeverity) params.append("severity", newSeverity);
         if (newExploited) params.append("exploited", newExploited);
 
-        const res = await fetch(`${CLIENT_API_URL}/api/v1/vulnerabilities?${params}`);
+        const res = await authFetch(`${CLIENT_API_URL}/api/v1/vulnerabilities?${params}`);
 
         if (res.ok) {
           const data = await res.json();
