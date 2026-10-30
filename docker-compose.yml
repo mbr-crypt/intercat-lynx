@@ -46,11 +46,17 @@ services:
       - ./nginx/ssl:/etc/nginx/ssl:ro
       # Security headers shared by all places that set their own add_header
       - ./nginx/snippets:/etc/nginx/snippets:ro
+    # nginx looks up the addresses of backend and frontend only once, at start.
+    # "restart: true" makes Compose restart nginx whenever it recreates or
+    # restarts one of them (docker compose up -d --build), so nobody has to
+    # remember "docker compose restart nginx" (symptom: "gleich geht es weiter").
     depends_on:
       frontend:
         condition: service_started
+        restart: true
       backend:
         condition: service_healthy
+        restart: true
     restart: unless-stopped
     networks:
       - openthreat-network

@@ -15,7 +15,7 @@ Which production file is used is chosen by `NGINX_CONF` in `.env` (see `.env.exa
 - `/api/*` goes to the backend, everything else to the frontend.
 - `X-Forwarded-For` is **replaced** by the real client address (never appended to what the client sent). The backend trusts exactly this (`TRUSTED_PROXIES=1`) for rate limits and login lockouts.
 - `/metrics` and `/health/detailed` answer 404 from outside. Prometheus reads them directly from `backend:8001` inside the Docker network.
-- Upstream names (`backend`, `frontend`) are resolved when nginx starts. After recreating the backend container run `docker compose restart nginx`, otherwise nginx may keep the old address.
+- Upstream names (`backend`, `frontend`) are resolved when nginx starts. `docker-compose.yml` therefore lists both in nginx's `depends_on` with `restart: true`: when Compose recreates or restarts one of them (`docker compose up -d --build`), it restarts nginx too. Only if you recreate a container with plain `docker` commands, or use a Compose older than 2.17, run `docker compose restart nginx` yourself.
 
 ## 🚀 Local Testing
 

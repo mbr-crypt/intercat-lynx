@@ -41,9 +41,20 @@ docker compose up -d --wait --wait-timeout 300 || {
 }
 ok "All services are up"
 
+# nginx looks up the addresses of backend and frontend only once, at start. Compose
+# restarts it too when it recreates them (depends_on restart: true), but an older
+# Compose does not, and the symptom is the page "gleich geht es weiter". A restart
+# takes a second, so it is done every time.
+docker compose restart nginx >/dev/null && ok "nginx restarted (picks up the new containers)"
+
 HTTP_PORT="$(grep -E '^HTTP_PORT=' .env | tail -n1 | cut -d= -f2- | tr -d '[:space:]')"
 HTTP_PORT="${HTTP_PORT:-80}"
-if curl -fsS "http://localhost:${HTTP_PORT}/health" >/dev/null 2>&1; then
+HEALTHY=no
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+    if curl -fsS "http://localhost:${HTTP_PORT}/health" >/dev/null 2>&1; then HEALTHY=yes; break; fi
+    sleep 2
+done
+if [ "$HEALTHY" = yes ]; then
     ok "API answers through nginx"
 else
     # With the HTTPS configuration port 80 only redirects, but /health stays plain
