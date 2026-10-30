@@ -1,303 +1,81 @@
-> **Status (InterCat Lynx):** Der Backend-Service `bsi_cert_service` wurde upstream im Cleanup (#17) entfernt; `scripts/fetch_bsi_cert.py` und der Endpunkt `bsi-cert/fetch` existieren nicht mehr. Dieses Dokument beschreibt die ursprüngliche Planung. Eine Neuimplementierung steht auf der Roadmap.
+# BSI CERT-Bund
 
-# BSI CERT-Bund Integration
+InterCat Lynx übernimmt die Warnmeldungen des **BSI CERT-Bund** (Bundesamt für Sicherheit in der
+Informationstechnik, Warn- und Informationsdienst „WID“) über den öffentlichen **CSAF-Feed** des BSI.
 
-## 🇩🇪 Übersicht
+## Was kommt woher
 
-OpenThreat integriert Sicherheitswarnungen vom **BSI CERT-Bund** (Bundesamt für Sicherheit in der Informationstechnik).
+| | |
+|---|---|
+| Anbieter-Beschreibung | `https://wid.cert-bund.de/.well-known/csaf/provider-metadata.json` (Rolle `csaf_trusted_provider`) |
+| Verwendeter Feed | `https://wid.cert-bund.de/.well-known/csaf/white/bsi-wid-white.json` (ROLIE, Einstufung **TLP:WHITE**) |
+| Nicht verwendet | die GREEN-Feeds (nicht für die Öffentlichkeit) und der CVD-Feed |
+| Format | CSAF 2.0 (JSON); ROLIE = Liste der Dokumente mit Änderungsdatum |
 
----
+## Was gespeichert wird (und was nicht)
 
-## 📍 Wo sind BSI-Informationen sichtbar?
+Gespeichert werden nur Verzeichnisdaten: Nummer (z. B. `WID-SEC-W-2026-0042`), Titel, Einstufung
+(kritisch/hoch/mittel/niedrig), Veröffentlichungs- und Änderungsdatum, CVE-Nummern, eine kurze Liste
+betroffener Produkte und der Link zum Original. **Der Text der Meldung wird nicht gespeichert.** Jede
+Anzeige verlinkt auf das BSI und nennt es als Quelle. Die BSI-Seite wird nicht gespiegelt.
 
-### 1. **Navigation - Eigene Seite** ⭐ **NEU**
+## Wo es sichtbar ist
 
-**Zugriff:** Klick auf "🇩🇪 BSI" in der Hauptnavigation
+- Seite **BSI** in der Navigation: Liste mit Suche (Titel, Nummer, CVE) und Filter nach Einstufung.
+- **CVE-Seite:** Abzeichen „BSI CERT-Bund“ und Abschnitt mit den Meldungen, die dieses CVE nennen.
+- **Administration → Daten:** Karte „BSI CERT-Bund“ (Schalter, Stand, „Jetzt abrufen“) und Eintrag in den
+  geplanten Aufgaben.
 
-**Was du siehst:**
-- Übersicht über BSI CERT-Bund
-- Links zum offiziellen Portal
-- Informationen über die Integration
-- Zukünftig: Liste aller BSI-Advisories
+## Wie der Abruf läuft
 
-**URL:** `http://localhost:3000/bsi-advisories`
+- Aufgabe `tasks.fetch_bsi_csaf`, Zeitplan: alle 3 Stunden zur Minute 20 (Celery Beat).
+- Der Feed wird bedingt abgefragt (ETag): ist er unverändert, kostet der Lauf eine kleine Anfrage.
+- Erster Lauf: Meldungen der letzten 60 Tage. Danach ab dem letzten vollständigen Lauf minus 2 Tage.
+- Höchstens 400 Dokumente je Lauf mit kurzer Pause dazwischen; der Rest folgt beim nächsten Lauf.
+- Ein defektes Dokument bricht den Lauf nicht ab; der Startpunkt rückt dann aber nicht vor, der nächste Lauf
+  versucht es erneut. Bereits gespeicherte, unveränderte Dokumente werden nicht noch einmal geladen.
 
----
+## Sicherheit beim Abruf
 
-### 2. **CVE Detail-Seite - BSI Badge**
+Der Inhalt des Feeds sind Daten, keine Anweisungen. Deshalb gilt: nur `https`, nur der Host
+`wid.cert-bund.de` (auch für jeden Link im Feed und für Weiterleitungen), Größenlimit je Antwort, Zeitlimits.
+Fehlermeldungen im Bericht der geplanten Aufgaben nennen nur den Fehlertyp.
 
-**Wann sichtbar:** Wenn ein CVE von BSI CERT-Bund referenziert wird
+## Nutzungsbedingungen des BSI
 
-**Wo:** Im Header neben dem CVE-ID
+Die [Nutzungsbedingungen des BSI](https://www.bsi.bund.de/DE/Service/Nutzungsbedingungen/Nutzungsbedingungen_node.html)
+erlauben die freie Nutzung von BSI-Inhalten für **nicht kommerzielle**, rechtmäßige Zwecke zur Förderung der
+IT-Sicherheit. Kommerzielle oder werbliche Nutzung braucht eine Vereinbarung mit dem BSI, das Spiegeln von
+BSI-Internetinhalten die vorherige schriftliche Zustimmung. Die Metadaten des Feeds enthalten keine eigene
+Lizenzangabe; das BSI erlaubt dort die Spiegelung durch CSAF-Aggregatoren
+(`mirror_on_CSAF_aggregators: true`). Wer InterCat Lynx **kommerziell betreibt**, schaltet den Abruf ab oder
+holt vorher die Zustimmung des BSI ein (Kontakt für CSAF: csaf@bsi.bund.de).
 
-**Aussehen:**
-```
-CVE-2024-1234  [CRITICAL]  [🔴 Exploited in Wild]  [🇩🇪 BSI CERT]
-```
+Weitere Regeln, an die sich die Anzeige hält: Quellennachweis, kein Eindruck einer Zusammenarbeit mit dem
+BSI, kein Bundesadler-Logo.
 
-**Badge-Farbe:** Blau (`bg-blue-100 text-blue-800`)
+## Einstellungen
 
----
+| Schalter | Wirkung |
+|---|---|
+| Administration → Daten → „Abruf abschalten“ | speichert `bsi.enabled=false` in der Datenbank |
+| Umgebungsvariable `BSI_ENABLED=false` | Voreinstellung, solange in der Datenbank nichts steht |
 
-### 3. **CVE Detail-Seite - References Section**
+Reihenfolge wie bei allen Einstellungen: Datenbank vor Umgebungsvariable vor Voreinstellung (eingeschaltet).
 
-**Wann sichtbar:** Wenn BSI-Referenzen vorhanden sind
+## Schnittstellen
 
-**Wo:** In der "References" Sektion ganz unten
+| Aufruf | Zugriff | Zweck |
+|---|---|---|
+| `GET /api/v1/bsi/advisories?page&page_size&severity&q` | öffentlich | Liste |
+| `GET /api/v1/bsi/cve/{CVE-…}` | öffentlich | Meldungen zu einem CVE |
+| `GET /api/v1/bsi/status` | Admin | Schalter, Stand, Anzahl |
+| `PUT /api/v1/bsi/settings` | Admin | ein-/ausschalten (im Audit-Log) |
+| `POST /api/v1/bsi/fetch` | Admin | Abruf sofort einreihen |
 
-**Aussehen:**
-```
-🔗 https://wid.cert-bund.de/portal/wid/securityadvisory?name=WID-SEC-2025-2308
-   [🇩🇪 BSI CERT-Bund]  [advisory]
-```
+## Code
 
----
-
-### 4. **API Endpoints**
-
-**Status prüfen:**
-```bash
-curl http://localhost:8001/api/v1/data-sources/bsi-cert/status
-```
-
-**Response:**
-```json
-{
-  "source": "bsi_cert",
-  "status": "active",
-  "vulnerabilities_with_bsi_source": 0,
-  "vulnerabilities_with_bsi_references": 0,
-  "rss_feed": "https://wid.cert-bund.de/content/public/securityAdvisory/rss"
-}
-```
-
-**Manuell triggern:**
-```bash
-curl -X POST http://localhost:8001/api/v1/data-sources/bsi-cert/fetch
-```
-
----
-
-## 🔍 Warum sehe ich noch keine BSI-Daten?
-
-### Problem: RSS-Feed enthält keine CVE-IDs
-
-Der BSI CERT-Bund RSS-Feed sieht so aus:
-
-```xml
-<item>
-  <title>[hoch] Microsoft Windows: Mehrere Schwachstellen</title>
-  <description>Ein entfernter, anonymer Angreifer kann mehrere Schwachstellen...</description>
-  <link>https://wid.cert-bund.de/portal/wid/securityadvisory?name=WID-SEC-2025-2308</link>
-</item>
-```
-
-**Problem:** Die CVE-IDs stehen **nicht** im RSS-Feed!
-
-**Wo sind die CVEs?** Nur auf den Detail-Seiten (Angular-App, dynamisch geladen)
-
----
-
-## 🛠️ Aktuelle Implementierung
-
-### Was funktioniert:
-
-✅ **RSS-Feed Parsing**
-- Fetcht BSI-Advisories
-- Extrahiert Titel, Links, Severity
-- Speichert Advisory-IDs
-
-✅ **API Endpoints**
-- Status-Abfrage
-- Manuelles Triggern
-- Datenquellen-Liste
-
-✅ **Frontend Integration**
-- Eigene BSI-Seite
-- BSI-Badge im CVE-Header
-- BSI-Badge bei References
-- Navigation-Link
-
-✅ **Celery Task**
-- Automatisches tägliches Fetching (08:00 UTC)
-- Background-Processing
-
-### Was noch fehlt:
-
-❌ **CVE-Extraktion aus Detail-Seiten**
-- BSI-Portal ist eine Angular-App
-- Daten werden dynamisch geladen
-- Benötigt Headless Browser (Playwright/Selenium)
-
-❌ **Direkte BSI-API**
-- BSI hat keine öffentliche JSON-API
-- Nur RSS-Feed verfügbar
-- Detail-Seiten müssen gescraped werden
-
----
-
-## 🚀 Nächste Schritte
-
-### Option A: Web Scraping (Komplex)
-
-**Implementierung:**
-```python
-# Mit Playwright/Selenium
-async def fetch_advisory_details(advisory_id):
-    browser = await playwright.chromium.launch()
-    page = await browser.new_page()
-    await page.goto(f"https://wid.cert-bund.de/portal/wid/securityadvisory?name={advisory_id}")
-    await page.wait_for_selector('.cve-list')
-    cves = await page.query_selector_all('.cve-id')
-    return [cve.text_content() for cve in cves]
-```
-
-**Vorteile:**
-- Vollständige Daten
-- CVE-Referenzen
-- Deutsche Beschreibungen
-
-**Nachteile:**
-- Komplex
-- Langsam
-- Fragil (bei UI-Änderungen)
-- Benötigt Headless Browser
-
----
-
-### Option B: Manuelle Zuordnung (Einfach)
-
-**Implementierung:**
-- BSI-Advisories als separate Entität speichern
-- Manuelle Verknüpfung mit CVEs
-- Anzeige auf eigener Seite
-
-**Vorteile:**
-- Einfach
-- Stabil
-- Schnell
-
-**Nachteile:**
-- Keine automatische CVE-Verknüpfung
-- Separate Ansicht nötig
-
----
-
-### Option C: Hybrid-Ansatz (Empfohlen) ⭐
-
-**Implementierung:**
-1. RSS-Feed für neue Advisories
-2. Separate BSI-Advisory-Seite
-3. Manuelle CVE-Verknüpfung wo möglich
-4. Später: Scraping für wichtige Advisories
-
-**Vorteile:**
-- Sofort nutzbar
-- Erweiterbar
-- Pragmatisch
-
-**Nachteile:**
-- Nicht vollständig automatisch
-
----
-
-## 📊 Aktuelle Statistiken
-
-```bash
-# Prüfen
-python scripts/fetch_bsi_cert.py --dry-run --limit 10
-```
-
-**Output:**
-```
-Fetched 10 advisories
-Found 0 CVE references in advisories  ← Problem!
-
-1. [hoch] F5 BIG-IP: Mehrere Schwachstellen
-   CVEs: None  ← Keine CVEs im RSS-Feed
-```
-
----
-
-## 🎯 Empfehlung
-
-**Kurzfristig:**
-1. ✅ BSI-Seite nutzen (bereits implementiert)
-2. ✅ Manuelle Links zu BSI-Portal
-3. ✅ BSI als Datenquelle dokumentieren
-
-**Mittelfristig:**
-4. ⏳ Web Scraping für Top-Advisories
-5. ⏳ CVE-Verknüpfung wo möglich
-
-**Langfristig:**
-6. 🔮 BSI-API anfragen (offiziell)
-7. 🔮 Vollständige Integration
-
----
-
-## 📝 Verwendung
-
-### Für Entwickler:
-
-**BSI-Daten fetchen:**
-```bash
-python scripts/fetch_bsi_cert.py
-```
-
-**API testen:**
-```bash
-# Status
-curl http://localhost:8001/api/v1/data-sources/bsi-cert/status
-
-# Fetch triggern
-curl -X POST http://localhost:8001/api/v1/data-sources/bsi-cert/fetch
-```
-
-### Für Benutzer:
-
-**BSI-Informationen finden:**
-1. Klick auf "🇩🇪 BSI" in der Navigation
-2. Öffne BSI CERT-Bund Portal
-3. Suche manuell nach CVE-ID
-
-**BSI-Badge sehen:**
-- Nur wenn CVE von BSI referenziert wird
-- Erscheint automatisch im CVE-Header
-- Zeigt offizielle BSI-Quelle an
-
----
-
-## 🔗 Nützliche Links
-
-- **BSI CERT-Bund Portal:** https://wid.cert-bund.de/portal/wid/securityadvisory
-- **BSI RSS-Feed:** https://wid.cert-bund.de/content/public/securityAdvisory/rss
-- **BSI Bürger-CERT:** https://wid.cert-bund.de/content/public/buergercert/rss
-
----
-
-## ❓ FAQ
-
-**Q: Warum sehe ich keine BSI-Badges?**
-A: Weil der RSS-Feed keine CVE-IDs enthält. Diese müssen von den Detail-Seiten gescraped werden.
-
-**Q: Wann wird das implementiert?**
-A: Scraping ist komplex. Aktuell haben wir eine separate BSI-Seite mit manuellen Links.
-
-**Q: Kann ich BSI-Daten manuell hinzufügen?**
-A: Ja, über die API oder direkt in der Datenbank.
-
-**Q: Gibt es eine offizielle BSI-API?**
-A: Nein, nur RSS-Feed. Detail-Daten müssen gescraped werden.
-
----
-
----
-
-## 📧 Support
-
-Fragen oder Probleme? Kontaktiere uns:
-- **Email:** hoodinformatik@gmail.com
-- **GitHub:** https://github.com/hoodinformatik/OpenThreat
-
-**Letzte Aktualisierung:** 2025-10-16
+`backend/services/bsi_service.py` (Abruf, Auswertung, Speichern), `backend/api/bsi.py`,
+`backend/tasks/data_tasks.py` (`fetch_bsi_csaf_task`), Migration `alembic/versions/017_bsi_advisories.py`,
+Tests `tests/test_bsi.py`; Oberfläche `frontend/app/bsi/page.tsx`, `frontend/components/admin/BsiCard.tsx`,
+`frontend/lib/bsi-api.ts`.

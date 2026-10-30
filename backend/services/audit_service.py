@@ -32,6 +32,7 @@ SETTING_SMTP_TEST = "setting.smtp_test"
 SETTING_NVD_KEY = "setting.nvd_key"
 SETTING_PUBLIC_URL = "setting.public_url"
 SETTING_BRANDING = "setting.branding"
+SETTING_BSI = "setting.bsi"
 
 
 def record(

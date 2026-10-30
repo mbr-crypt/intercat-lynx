@@ -154,22 +154,6 @@ class TestDataSourcesEndpoints:
         assert "sources" in data
         assert "total" in data
         assert len(data["sources"]) > 0
-    
-    @pytest.mark.skip(
-        reason="BSI CERT-Bund integration is not part of the backend yet "
-        "(scripts/fetch_bsi_cert.py imports a missing service module)"
-    )
-    def test_bsi_cert_status(self, client):
-        """Test BSI CERT status endpoint."""
-        response = client.get("/api/v1/data-sources/bsi-cert/status")
-        
-        # May fail if database query has issues in test environment
-        assert response.status_code in [status.HTTP_200_OK, status.HTTP_500_INTERNAL_SERVER_ERROR]
-        
-        if response.status_code == status.HTTP_200_OK:
-            data = response.json()
-            assert "source" in data
-            assert data["source"] == "bsi_cert"
 
 
 @pytest.mark.api

@@ -86,7 +86,7 @@ export default async function RootLayout({
                       >
                         {UPSTREAM_NAME}
                       </a>
-                      . Data sources: CISA KEV, NVD.
+                      . Data sources: CISA KEV, NVD, BSI CERT-Bund.
                     </p>
                     {brand.footer_text && (
                       <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">{brand.footer_text}</p>

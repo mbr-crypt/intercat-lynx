@@ -126,6 +126,7 @@ export const AUDIT_LABEL: Record<string, string> = {
   "setting.nvd_key": "NVD-Schlüssel geändert",
   "setting.public_url": "Öffentliche Adresse geändert",
   "setting.branding": "Darstellung geändert",
+  "setting.bsi": "BSI-Abruf umgestellt",
 };
 
 export function formatDate(value: string | null): string {

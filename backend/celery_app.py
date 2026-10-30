@@ -49,6 +49,11 @@ celery_app.conf.beat_schedule = {
         "task": "tasks.fetch_cisa_kev",
         "schedule": crontab(minute=0, hour=9),  # Daily at 09:00 UTC
     },
+    # BSI CERT-Bund warnings (CSAF feed); an unchanged feed costs one small request
+    "fetch-bsi-csaf": {
+        "task": "tasks.fetch_bsi_csaf",
+        "schedule": crontab(minute=20, hour="*/3"),  # every 3 hours at :20
+    },
     # Alerts for followed products: after the NVD fetch lands and in between
     "send-product-alerts": {
         "task": "tasks.send_product_alerts",

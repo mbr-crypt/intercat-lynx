@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Info, Menu, X, Newspaper, Crosshair } from "lucide-react";
+import { BarChart3, Info, Menu, X, Newspaper, Crosshair, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LynxMark } from "./LynxMark";
 import { SOURCE_URL } from "@/lib/branding";
@@ -22,6 +22,7 @@ export function Navigation() {
     { href: "/", label: "Dashboard", icon: BarChart3 },
     { href: "/watchlist", label: "My Products", icon: Crosshair, isNew: true },
     { href: "/news", label: "News", icon: Newspaper },
+    { href: "/bsi", label: "BSI", icon: ShieldAlert },
     { href: "/about", label: "About", icon: Info },
   ];
 
