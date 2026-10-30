@@ -8,7 +8,6 @@ import { AnalyticsProvider } from "@/components/AnalyticsProvider";
 import { SetupGuard } from "@/components/SetupGuard";
 import { PasswordChangeGuard } from "@/components/PasswordChangeGuard";
 import { AuthGate } from "@/components/AuthGate";
-import { FooterFeedLink } from "@/components/FooterFeedLink";
 import { BrandProvider } from "@/lib/brand-context";
 import type { Brand } from "@/lib/brand";
 import { getBrand } from "@/lib/brand-server";
@@ -30,6 +29,16 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: `${brand.name} - Vulnerability Intelligence`,
     description: `${brand.name}: CVE tracking and vulnerability intelligence. Open source (AGPL-3.0), based on ${PRODUCT_NAME}, a fork of ${UPSTREAM_NAME}.`,
+    // The feeds are public (a feed reader cannot sign in), so readers can find them
+    alternates: {
+      types: {
+        "application/rss+xml": [
+          { url: "/api/v1/feeds/rss", title: `${brand.name} - Recent Vulnerabilities` },
+          { url: "/api/v1/feeds/exploited", title: `${brand.name} - Actively Exploited Vulnerabilities` },
+          { url: "/api/v1/feeds/critical", title: `${brand.name} - Critical Vulnerabilities` },
+        ],
+      },
+    },
   };
 }
 
@@ -105,7 +114,9 @@ export default async function RootLayout({
                     <a href="/privacy" className="text-link hover:underline">
                       Privacy Policy
                     </a>
-                    <FooterFeedLink />
+                    <a href="/api/v1/feeds/rss" className="text-link hover:underline">
+                      RSS Feed
+                    </a>
                   </nav>
                 </div>
                 <div className="border-t border-gray-200 dark:border-gray-700">
