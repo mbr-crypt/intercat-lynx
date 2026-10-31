@@ -54,16 +54,38 @@ UNMATCHED = "unmatched"
 
 def _endpoint_label(request: Request) -> str:
     """
-    The route *template* (``/api/v1/vulnerabilities/{cve_id}``), never the raw URL.
+    The route *template* with its router prefix, e.g.
+    ``/api/v1/vulnerabilities/{cve_id}``, never the raw URL.
 
     Every distinct label value creates a new time series that lives in memory
     until the process restarts. With the raw path an anonymous caller could
     request ``/x1``, ``/x2``, ... and grow the metrics without limit
     (cardinality explosion). Requests that match no route share one label.
+
+    Newer FastAPI versions put only the route's own part into ``route.path``
+    (``/vulnerabilities/{cve_id}``, or even an empty string for a list route),
+    without the prefix of the router it was included with. The prefix is
+    recovered from the real path: the real path is ``prefix + concrete route
+    part``, and the concrete route part is the template filled with the matched
+    path parameters.
     """
     route = request.scope.get("route")
-    path = getattr(route, "path", None)
-    return path if isinstance(path, str) else UNMATCHED
+    template = getattr(route, "path", None)
+    if not isinstance(template, str):
+        return UNMATCHED
+    path = request.url.path
+    try:
+        concrete = getattr(route, "path_format", template).format(
+            **request.scope.get("path_params", {})
+        )
+    except (KeyError, IndexError, ValueError):
+        return template or UNMATCHED
+    if concrete and path.endswith(concrete):
+        return path[: -len(concrete)] + template
+    if not concrete:
+        # empty route part: the whole path is the (fixed) router prefix
+        return path or UNMATCHED
+    return template
 
 
 async def metrics_middleware(request: Request, call_next):

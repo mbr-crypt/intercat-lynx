@@ -25,3 +25,14 @@ def test_ids_in_a_path_collapse_to_the_route_template(client):
     seen = _endpoints()
     assert not any("CVE-2099" in e for e in seen)
     assert any("{" in e for e in seen)
+
+
+def test_label_contains_the_router_prefix(client):
+    client.get("/api/v1/vulnerabilities")
+    client.get("/api/v1/vulnerabilities/CVE-2099-0009")
+    client.get("/api/v1/stats")
+    seen = _endpoints()
+    assert "/api/v1/vulnerabilities" in seen
+    assert "/api/v1/vulnerabilities/{cve_id}" in seen
+    assert "/api/v1/stats" in seen
+    assert "" not in seen
