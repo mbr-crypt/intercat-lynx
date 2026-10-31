@@ -1,6 +1,6 @@
 """Account deletion that also removes the data pointing at the account."""
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, Query
 
 from ..models import (
     ApiToken,
@@ -13,8 +13,35 @@ from ..models import (
     NotificationDelivery,
     NotificationSetting,
     User,
+    UserRole,
     WatchedProduct,
 )
+
+
+def active_admins_query(db: Session) -> Query:
+    """All active administrators, in a fixed order, locked for the transaction."""
+    return (
+        db.query(User.id)
+        .filter(User.role == UserRole.ADMIN, User.is_active.is_(True))
+        .order_by(User.id)
+        .with_for_update()
+    )
+
+
+def other_active_admins(db: Session, exclude_id: int) -> int:
+    """
+    How many active administrators besides ``exclude_id`` exist, with all active
+    administrator rows locked (``SELECT ... FOR UPDATE``) until commit.
+
+    "Is there another admin?" followed by "now remove this one" is a
+    check-then-act sequence. Without the lock two administrators who remove
+    each other at the same moment both see "the other one still exists" and
+    both succeed: the system is left without an administrator. With the lock
+    the second request waits, then re-reads the committed state and is refused.
+    The fixed ``ORDER BY id`` makes concurrent requests take the locks in the
+    same order, so they queue instead of deadlocking.
+    """
+    return sum(1 for (admin_id,) in active_admins_query(db).all() if admin_id != exclude_id)
 
 
 def _comment_tree_ids(db: Session, user_id: int) -> list:

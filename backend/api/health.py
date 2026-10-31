@@ -2,6 +2,7 @@
 Health check endpoints.
 """
 
+import logging
 import os
 from datetime import datetime, timezone
 
@@ -13,6 +14,8 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import Vulnerability
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -28,8 +31,11 @@ async def health_check(db: Session = Depends(get_db)):
     try:
         db.execute(text("SELECT 1"))
         db_status = "healthy"
-    except Exception as e:
-        db_status = f"unhealthy: {str(e)}"
+    except Exception:
+        # The driver message contains the database host, port and user: log it,
+        # never return it to an anonymous caller.
+        logger.exception("health check: database unreachable")
+        db_status = "unhealthy"
 
     return {
         "status": "healthy" if db_status == "healthy" else "degraded",
@@ -62,9 +68,10 @@ async def detailed_health_check(db: Session = Depends(get_db)):
             "response_time_ms": "<10",
             "vulnerability_count": vuln_count,
         }
-    except Exception as e:
+    except Exception:
+        logger.exception("detailed health check: database unreachable")
         health_data["status"] = "unhealthy"
-        health_data["checks"]["database"] = {"status": "unhealthy", "error": str(e)}
+        health_data["checks"]["database"] = {"status": "unhealthy"}
 
     # System metrics
     try:
@@ -86,8 +93,9 @@ async def detailed_health_check(db: Session = Depends(get_db)):
             health_data["status"] = "degraded"
             health_data["checks"]["system"]["warning"] = "High resource usage"
 
-    except Exception as e:
-        health_data["checks"]["system"] = {"status": "unknown", "error": str(e)}
+    except Exception:
+        logger.exception("detailed health check: system metrics unavailable")
+        health_data["checks"]["system"] = {"status": "unknown"}
 
     # Environment check
     health_data["checks"]["environment"] = {

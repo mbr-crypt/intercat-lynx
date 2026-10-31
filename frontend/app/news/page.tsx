@@ -2,6 +2,7 @@
 
 import { apiBase } from "@/lib/config";
 import { authFetch } from "@/lib/authed-fetch";
+import { safeHttpUrl } from "@/lib/safe-url";
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -369,7 +370,7 @@ export default function NewsPage() {
 
                     {/* Title */}
                     <a
-                      href={article.url}
+                      href={safeHttpUrl(article.url)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="group"

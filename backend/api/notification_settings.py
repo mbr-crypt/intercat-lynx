@@ -28,6 +28,12 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# The handlers below are plain ``def`` on purpose. They do blocking work (database
+# access through synchronous SQLAlchemy, DNS lookups and an outgoing HTTP request
+# for the webhook test). FastAPI runs a plain ``def`` handler in a worker thread;
+# an ``async def`` handler runs *on the event loop*, so one slow webhook receiver
+# would freeze every other request served by the same uvicorn worker.
+
 
 def _out(user: User, s: NotificationSetting, new_secret: str = None) -> NotificationSettingsOut:
     return NotificationSettingsOut(
@@ -49,12 +55,12 @@ def _out(user: User, s: NotificationSetting, new_secret: str = None) -> Notifica
 
 
 @router.get("", response_model=NotificationSettingsOut)
-async def read_settings(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def read_settings(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     return _out(user, alerts.get_or_create_settings(db, user))
 
 
 @router.put("", response_model=NotificationSettingsOut)
-async def update_settings(
+def update_settings(
     data: NotificationSettingsUpdate,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -97,7 +103,7 @@ async def update_settings(
 
 
 @router.post("/webhook/secret", response_model=SecretOut)
-async def renew_webhook_secret(
+def renew_webhook_secret(
     user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
     """New signing secret. The old one stops working at once; shown only here."""
@@ -109,7 +115,7 @@ async def renew_webhook_secret(
 
 
 @router.post("/test/{channel}", response_model=TestResult)
-async def send_test(
+def send_test(
     channel: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
     """Send one sample message over the channel so the user can check the setup."""

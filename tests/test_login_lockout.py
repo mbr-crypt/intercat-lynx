@@ -154,3 +154,13 @@ def test_throttle_falls_back_to_memory_when_redis_is_down(monkeypatch):
     with pytest.raises(Exception) as caught:
         login_throttle.check("192.0.2.1")
     assert getattr(caught.value, "status_code", None) == 429
+
+
+def test_lock_does_not_kill_the_owners_live_session(client, db_session):
+    """A stranger's failed guesses must not make the owner's valid token return 403."""
+    make_user(db_session)
+    token = login_from(client, OWNER).json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}", "X-Forwarded-For": OWNER}
+    assert client.get("/api/v1/auth/me", headers=headers).status_code == 200
+    lock_from(client, STRANGER)  # the account is now locked for password logins from strangers
+    assert client.get("/api/v1/auth/me", headers=headers).status_code == 200

@@ -35,7 +35,7 @@ from ..schemas.auth import (
     RegistrationSetting,
 )
 from ..security import passwords
-from ..services import audit_service, settings_service, user_service
+from ..services import api_token_service, audit_service, settings_service, user_service
 
 logger = logging.getLogger(__name__)
 
@@ -78,11 +78,7 @@ def _get_user(db: Session, user_id: int) -> User:
 
 
 def _other_active_admins(db: Session, exclude_id: int) -> int:
-    return (
-        db.query(User)
-        .filter(User.role == UserRole.ADMIN, User.is_active == True, User.id != exclude_id)
-        .count()
-    )
+    return user_service.other_active_admins(db, exclude_id)
 
 
 def _refuse_self(actor: User, target: User, what: str) -> None:
@@ -340,6 +336,7 @@ async def reset_password(
     user = _get_user(db, user_id)
     _refuse_self(admin, user, "reset the password of")
     temporary = _set_temporary_password(user, data.password)
+    api_token_service.revoke_all(db, user)
     audit_service.record(db, admin, audit_service.USER_PASSWORD_RESET, user, commit=False)
     db.commit()
     db.refresh(user)
@@ -353,6 +350,7 @@ async def revoke_sessions(
     """Sign the user out everywhere (all issued access tokens stop working)."""
     user = _get_user(db, user_id)
     user.token_version += 1
+    api_token_service.revoke_all(db, user)
     audit_service.record(db, admin, audit_service.USER_SESSIONS_REVOKED, user, commit=False)
     db.commit()
     db.refresh(user)

@@ -143,7 +143,11 @@ app.include_router(
 app.include_router(
     vulnerabilities.router, prefix="/api/v1", tags=["Vulnerabilities"], dependencies=[Depends(require_login)]
 )
-app.include_router(comments.router, prefix="/api/v1", tags=["Comments"])
+# Comment reads use optional_user (a token is optional for the "my vote" flag), which
+# would leave them open; the router guard makes the whole site sign-in only.
+app.include_router(
+    comments.router, prefix="/api/v1", tags=["Comments"], dependencies=[Depends(require_login)]
+)
 app.include_router(bookmarks.router, prefix="/api/v1", tags=["Bookmarks"])
 app.include_router(notifications.router, prefix="/api/v1", tags=["Notifications"])
 app.include_router(stats.router, prefix="/api/v1", tags=["Statistics"], dependencies=[Depends(require_login)])

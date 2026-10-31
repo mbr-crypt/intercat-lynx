@@ -11,8 +11,10 @@ This service handles:
 import html
 import logging
 import re
+import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 from xml.etree import ElementTree
 
 import requests
@@ -55,6 +57,25 @@ DEFAULT_NEWS_SOURCES = [
         "icon_url": "https://www.bleepingcomputer.com/favicon.ico",
     },
 ]
+
+
+# Longest feed text (title, summary) that is processed at all
+MAX_TEXT_CHARS = 20000
+# Largest feed document that is downloaded (a real feed is a few hundred KB)
+MAX_FEED_BYTES = 5 * 1024 * 1024
+# Whole download, not per read
+FEED_DEADLINE_SECONDS = 60
+
+
+def safe_http_url(value: Optional[str]) -> Optional[str]:
+    """The URL if it is a plain http(s) link, else None (blocks javascript:, data:, ...)."""
+    if not value:
+        return None
+    value = value.strip()
+    parsed = urlparse(value)
+    if parsed.scheme.lower() not in ("http", "https") or not parsed.netloc:
+        return None
+    return value
 
 
 class NewsService:
@@ -114,9 +135,25 @@ class NewsService:
             Feed XML content or None on error
         """
         try:
-            response = self.session.get(url, timeout=timeout)
-            response.raise_for_status()
-            return response.text
+            # stream=True: the body is read in pieces below, so a huge or endless
+            # answer is cut off instead of being loaded into memory first
+            with self.session.get(url, timeout=timeout, stream=True) as response:
+                response.raise_for_status()
+                started = time.monotonic()
+                chunks: List[bytes] = []
+                size = 0
+                for chunk in response.iter_content(chunk_size=65536):
+                    size += len(chunk)
+                    if size > MAX_FEED_BYTES:
+                        logger.error(f"Feed {url} is larger than {MAX_FEED_BYTES} bytes, skipped")
+                        return None
+                    if time.monotonic() - started > FEED_DEADLINE_SECONDS:
+                        logger.error(f"Feed {url} took longer than {FEED_DEADLINE_SECONDS}s, skipped")
+                        return None
+                    chunks.append(chunk)
+                raw = b"".join(chunks)
+                encoding = response.encoding or "utf-8"
+            return raw.decode(encoding, errors="replace")
         except requests.RequestException as e:
             logger.error(f"Failed to fetch feed {url}: {e}")
             return None
@@ -176,7 +213,7 @@ class NewsService:
     def _parse_rss_item(self, item: ElementTree.Element) -> Optional[Dict[str, Any]]:
         """Parse a single RSS item."""
         title = item.findtext("title")
-        link = item.findtext("link")
+        link = safe_http_url(item.findtext("link"))
 
         if not title or not link:
             return None
@@ -226,6 +263,7 @@ class NewsService:
             elif not link:
                 link = link_elem.get("href")
 
+        link = safe_http_url(link)
         if not title or not link:
             return None
 
@@ -291,6 +329,7 @@ class NewsService:
             elif not link:
                 link = link_elem.get("href")
 
+        link = safe_http_url(link)
         if not title or not link:
             return None
 
@@ -363,8 +402,12 @@ class NewsService:
         """Remove HTML tags and decode entities."""
         if not text:
             return ""
-        # Remove HTML tags
-        text = re.sub(r"<[^>]+>", "", text)
+        # Feed text is attacker-controlled. ``<[^>]+>`` on a long run of "<"
+        # without a closing ">" re-scans to the end of the text from every "<"
+        # (quadratic time) and can hold the single Celery worker for minutes.
+        # So: cap the length first and bound what one tag may span.
+        text = text[:MAX_TEXT_CHARS]
+        text = re.sub(r"<[^>]{1,1000}>", "", text)
         # Decode HTML entities
         text = html.unescape(text)
         # Normalize whitespace
