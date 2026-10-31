@@ -34,6 +34,9 @@ OPEN = {
     ("POST", "/api/v1/setup/smtp-test"): "setup assistant",
     ("GET", "/api/v1/setup/status"): "tells the frontend whether the setup is still open",
     ("POST", "/api/v1/setup/verify-token"): "setup assistant",
+    ("GET", "/api/v1/feeds/rss"): "RSS feed, a feed reader cannot sign in (decision of the operator, 2026-10-30)",
+    ("GET", "/api/v1/feeds/exploited"): "RSS feed",
+    ("GET", "/api/v1/feeds/critical"): "RSS feed",
     ("GET", "/api/v1/waitlist/count"): "waitlist of the original, no page uses it (open point)",
     ("POST", "/api/v1/waitlist/join"): "waitlist of the original, rate limited (open point)",
     ("GET", "/api/v1/waitlist/verify"): "waitlist of the original (open point)",
@@ -57,9 +60,6 @@ FORMER_PUBLIC = [
     "/api/v1/news/stats",
     "/api/v1/bsi/advisories",
     "/api/v1/bsi/cve/CVE-2026-0001",
-    "/api/v1/feeds/rss",
-    "/api/v1/feeds/exploited",
-    "/api/v1/feeds/critical",
     "/api/v1/data-sources/list",
     "/api/v1/data-sources/nvd/status",
     "/api/v1/data-sources/cisa-kev/status",
@@ -107,3 +107,10 @@ def test_sign_in_and_branding_stay_reachable(login_required):
     assert login_required.get("/api/v1/branding").status_code == 200
     assert login_required.get("/api/v1/setup/status").status_code == 200
     assert login_required.get("/health").status_code == 200
+
+
+@pytest.mark.parametrize("path", ["/api/v1/feeds/rss", "/api/v1/feeds/exploited", "/api/v1/feeds/critical"])
+def test_rss_feeds_are_public(login_required, path):
+    response = login_required.get(path)
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/rss+xml")
