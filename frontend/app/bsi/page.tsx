@@ -12,6 +12,7 @@ import {
   fetchBsiPage,
   type BsiPage,
 } from "@/lib/bsi-api";
+import { safeHttpUrl } from "@/lib/safe-url";
 
 function day(iso: string | null): string {
   if (!iso) return "–";
@@ -122,7 +123,7 @@ export default function BsiPageView() {
             <CardContent className="space-y-2 py-4">
               <div className="flex flex-wrap items-center gap-2">
                 <a
-                  href={a.url}
+                  href={safeHttpUrl(a.url)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 font-mono text-sm text-link hover:underline"
