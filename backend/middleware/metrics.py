@@ -49,6 +49,23 @@ http_errors_total = Counter(
 )
 
 
+UNMATCHED = "unmatched"
+
+
+def _endpoint_label(request: Request) -> str:
+    """
+    The route *template* (``/api/v1/vulnerabilities/{cve_id}``), never the raw URL.
+
+    Every distinct label value creates a new time series that lives in memory
+    until the process restarts. With the raw path an anonymous caller could
+    request ``/x1``, ``/x2``, ... and grow the metrics without limit
+    (cardinality explosion). Requests that match no route share one label.
+    """
+    route = request.scope.get("route")
+    path = getattr(route, "path", None)
+    return path if isinstance(path, str) else UNMATCHED
+
+
 async def metrics_middleware(request: Request, call_next):
     """
     Middleware to collect Prometheus metrics.
@@ -76,22 +93,23 @@ async def metrics_middleware(request: Request, call_next):
 
         # Record metrics
         duration = time.time() - start_time
+        endpoint = _endpoint_label(request)
 
         http_requests_total.labels(
             method=request.method,
-            endpoint=request.url.path,
+            endpoint=endpoint,
             status=response.status_code,
         ).inc()
 
         http_request_duration_seconds.labels(
-            method=request.method, endpoint=request.url.path
+            method=request.method, endpoint=endpoint
         ).observe(duration)
 
         # Track errors
         if response.status_code >= 400:
             http_errors_total.labels(
                 method=request.method,
-                endpoint=request.url.path,
+                endpoint=endpoint,
                 status=response.status_code,
             ).inc()
 
@@ -142,7 +160,10 @@ async def metrics_endpoint(request: Request):
         from backend.database import get_db
 
         db = next(get_db())
-        update_application_metrics(db)
+        try:
+            update_application_metrics(db)
+        finally:
+            db.close()
     except Exception as e:
         logger.warning(f"Could not update metrics: {e}")
 

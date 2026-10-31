@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..dependencies.auth import get_current_user, require_admin
 from ..models import User
-from ..services import audit_service
+from ..services import api_token_service, audit_service
 from ..schemas.auth import (
     RecoveryCodesResponse,
     TwoFactorConfirm,
@@ -132,6 +132,7 @@ async def admin_reset_two_factor(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     mfa.disable(target, db)
     target.token_version += 1
+    api_token_service.revoke_all(db, target)
     audit_service.record(db, admin, audit_service.USER_2FA_RESET, target, commit=False)
     db.commit()
     logger.warning(f"2FA reset by admin for: {target.username}")

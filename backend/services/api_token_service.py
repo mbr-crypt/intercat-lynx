@@ -45,6 +45,20 @@ def _utc(value: datetime) -> datetime:
     return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
 
 
+def revoke_all(db: Session, user: User) -> int:
+    """
+    Delete every API token of the user (no commit; the caller commits).
+
+    Used wherever "sign out everywhere" happens (password change or reset,
+    admin revoke, 2FA reset). A machine token is a credential like any other:
+    if it survived those events, an attacker who had stolen it would keep
+    access after the owner "changed everything".
+    """
+    return db.query(ApiToken).filter(ApiToken.user_id == user.id).delete(
+        synchronize_session=False
+    )
+
+
 def find_user(db: Session, token: str) -> Optional[User]:
     """The active user the token belongs to, or None (unknown, expired, user disabled)."""
     if not token.startswith(TOKEN_PREFIX):
@@ -57,6 +71,10 @@ def find_user(db: Session, token: str) -> Optional[User]:
         return None
     user = db.query(User).filter(User.id == row.user_id).first()
     if user is None or not user.is_active:
+        return None
+    # An account with a pending forced password change (temporary password after
+    # an admin reset) is not fully usable yet, for tokens either.
+    if user.must_change_password:
         return None
     if row.last_used_at is None or now - _utc(row.last_used_at) > LAST_USED_RESOLUTION:
         row.last_used_at = now

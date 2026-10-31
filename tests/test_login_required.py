@@ -85,6 +85,28 @@ def test_every_route_needs_a_login_except_the_listed_ones():
     assert not stale, f"Listed as open but no longer open or no longer there: {stale}"
 
 
+def _example_path(template: str) -> str:
+    """Fill {placeholders} so that the path is valid for the router."""
+    import re
+
+    return re.sub(r"\{[^}]+\}", "1", template)
+
+
+def test_no_route_outside_the_open_list_answers_without_a_token(login_required):
+    """The OpenAPI check above only sees *declared* security. optional_user declares it
+    (HTTPBearer(auto_error=False)) but still lets anonymous callers through, so every
+    guarded route is also called once for real, without a token."""
+    leaks = []
+    for path, operations in app.openapi()["paths"].items():
+        for method in operations:
+            if method not in ("get", "post", "put", "patch", "delete") or (method.upper(), path) in OPEN:
+                continue
+            response = login_required.request(method.upper(), _example_path(path))
+            if response.status_code not in (401, 403):
+                leaks.append((method.upper(), path, response.status_code))
+    assert not leaks, f"Answered without a token (expected 401/403): {leaks}"
+
+
 @pytest.mark.parametrize("path", FORMER_PUBLIC)
 def test_data_is_refused_without_login(login_required, path):
     assert login_required.get(path).status_code in (401, 403)

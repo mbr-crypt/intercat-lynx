@@ -3,7 +3,6 @@ FastAPI dependencies for authentication and authorization.
 """
 
 import logging
-from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import Depends, HTTPException, Request, status
@@ -22,10 +21,6 @@ security = HTTPBearer()
 
 # While an admin-chosen password is still active, only these calls work
 _ALLOWED_WHILE_PASSWORD_CHANGE_PENDING = ("/auth/me", "/auth/change-password")
-
-
-def _as_utc(value: datetime) -> datetime:
-    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
 
 
 async def get_current_user(
@@ -82,13 +77,12 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Check if account is locked
-    if user.locked_until and _as_utc(user.locked_until) > datetime.now(timezone.utc):
-        logger.warning(f"Locked user attempted access: {user.username}")
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Account is locked until {user.locked_until.isoformat()}",
-        )
+    # The failed-login lock (locked_until) is deliberately NOT enforced here. It
+    # exists to stop password guessing and is checked on the login endpoints,
+    # where the owner's last-login address is exempt. A valid, unrevoked token
+    # (checked above through is_active and token_version) must keep working:
+    # otherwise a stranger who only knows a username could lock out that
+    # person's live session, an administrator's included.
 
     if user.must_change_password and not request.url.path.endswith(
         _ALLOWED_WHILE_PASSWORD_CHANGE_PENDING

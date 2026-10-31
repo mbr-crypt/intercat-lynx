@@ -352,6 +352,24 @@ def test_email_failure_is_reported_and_retried(db_session, smtp):
     assert s.last_email_error is None and s.last_email_ok_at is not None and len(sent) == 1
 
 
+def test_email_is_not_sent_to_an_unverified_address(db_session, smtp):
+    sent, _ = smtp
+    user = make_user(db_session, "alice")
+    user.is_verified = False
+    db_session.commit()
+    follow(db_session, user)
+    s = configure(db_session, user, email_enabled=True, in_app_enabled=False, min_severity="LOW")
+    add_cve(db_session, "CVE-2026-3201")
+    stats = alerts.run(db_session)
+    assert sent == [] and stats["email"] == 0 and stats["failed"] == 1
+    db_session.refresh(s)
+    assert "nicht bestätigt" in s.last_email_error
+    # the alert is kept for later: once the address is verified it goes out
+    user.is_verified = True
+    db_session.commit()
+    assert alerts.run(db_session)["email"] == 1 and len(sent) == 1
+
+
 def test_email_without_smtp_says_so(db_session, monkeypatch):
     monkeypatch.setattr(EmailService, "smtp_enabled", property(lambda self: False))
     user = make_user(db_session, "alice")

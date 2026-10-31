@@ -29,7 +29,7 @@ from ..schemas.email_verification import (
     VerificationResponse,
 )
 from ..security import attempt_limit, login_throttle, mfa, passwords
-from ..services import settings_service, user_service
+from ..services import api_token_service, settings_service, user_service
 from ..services.email_service import email_service
 from ..utils.client_ip import get_client_ip
 from ..utils.auth import (
@@ -41,6 +41,9 @@ from ..utils.auth import (
 )
 
 logger = logging.getLogger(__name__)
+
+# How long after entering the e-mail code a registration may still use it
+REGISTRATION_PROOF_VALID_FOR = timedelta(minutes=30)
 
 router = APIRouter()
 
@@ -81,13 +84,17 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
             status_code=status.HTTP_400_BAD_REQUEST, detail="Username already taken"
         )
 
-    # Check if email was verified
+    # Check if email was verified. The proof is short-lived and single-use: an
+    # old "used" code must not make a later registration with the same address
+    # (for example after the first account was deleted) count as verified.
+    verified_after = datetime.now(timezone.utc) - REGISTRATION_PROOF_VALID_FOR
     email_verified = (
         db.query(EmailVerification)
         .filter(
             EmailVerification.email == user_data.email,
             EmailVerification.verification_type == "registration",
             EmailVerification.is_used == True,
+            EmailVerification.verified_at >= verified_after,
         )
         .first()
     )
@@ -105,6 +112,11 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
     )
 
     db.add(new_user)
+    # Consume every registration code of this address, used or not
+    db.query(EmailVerification).filter(
+        EmailVerification.email == user_data.email,
+        EmailVerification.verification_type == "registration",
+    ).delete(synchronize_session=False)
     db.commit()
     db.refresh(new_user)
 
@@ -304,22 +316,23 @@ async def update_profile(
 
     **Requires:** Valid JWT token
 
-    **Updatable fields:**
-    - email (must be unique)
+    **Updatable fields:** none at the moment. The e-mail address has its own
+    verified flow (``/request-email-change``).
 
     **Returns:**
     - Updated user profile
     """
-    # Update email if provided
+    # The address cannot be changed here. Alerts are mailed to it, so a change
+    # needs proof that the new mailbox belongs to the user: that is what
+    # /request-email-change and /confirm-email-change do (code sent to the new
+    # address). Changing it here silently would let a stolen session redirect
+    # every security alert to an attacker's inbox.
     if user_update.email and user_update.email != current_user.email:
-        # Check if new email already exists
-        existing_user = db.query(User).filter(User.email == user_update.email).first()
-        if existing_user:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail="Email already in use"
-            )
-        current_user.email = user_update.email
-        current_user.is_verified = False  # Re-verify email
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The e-mail address can only be changed with a verification code "
+            "(request-email-change / confirm-email-change)",
+        )
 
     current_user.updated_at = datetime.now(timezone.utc)
     db.commit()
@@ -366,6 +379,7 @@ async def change_password(
     current_user.hashed_password = get_password_hash(password_data.new_password)
     current_user.must_change_password = False
     current_user.token_version += 1
+    api_token_service.revoke_all(db, current_user)
     db.commit()
 
     logger.info(f"Password changed successfully: {current_user.username}")
@@ -392,10 +406,9 @@ async def delete_account(
     """
     username = current_user.username
 
-    if current_user.role == UserRole.ADMIN and not (
-        db.query(User)
-        .filter(User.role == UserRole.ADMIN, User.is_active == True, User.id != current_user.id)
-        .count()
+    if (
+        current_user.role == UserRole.ADMIN
+        and user_service.other_active_admins(db, current_user.id) == 0
     ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

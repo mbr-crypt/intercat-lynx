@@ -288,6 +288,11 @@ def _esc(value: str) -> str:
 
 def send_email(user: User, items: List[dict]) -> Tuple[bool, Optional[str]]:
     """Really send (never just log): an alert that only reaches the log is worthless."""
+    # Only to an address whose owner has proven the mailbox. Otherwise anyone
+    # who can set an arbitrary address on an account could use this server to
+    # send vulnerability mails to third parties.
+    if not user.is_verified:
+        return False, "Die E-Mail-Adresse ist noch nicht bestätigt"
     if not email_service.smtp_enabled:
         return False, "Der E-Mail-Versand ist auf diesem Server nicht eingerichtet"
     try:

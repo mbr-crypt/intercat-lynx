@@ -8,11 +8,31 @@
 
 export const TOKEN_KEY = "auth_token";
 
-/** Only paths on this site: never an address typed into the URL by someone else. */
+/**
+ * Only paths on this site: never an address typed into the URL by someone else.
+ *
+ * Browsers delete TAB, LF and CR anywhere in a URL before parsing it, so
+ * "/<TAB>/evil.example" starts with "/" and not with "//" but still becomes
+ * "https://evil.example/". Control characters and backslashes are therefore
+ * refused outright, and what is left is resolved against a dummy origin: only a
+ * result that stays on that origin is accepted, and only path, query and
+ * fragment are handed back.
+ */
 export function safeNext(value: string | null | undefined): string {
-  if (!value || !value.startsWith("/") || value.startsWith("//") || value.startsWith("/\\")) return "/";
-  if (value === "/auth" || value.startsWith("/auth?") || value.startsWith("/setup")) return "/";
-  return value;
+  if (!value || !value.startsWith("/") || value.startsWith("//")) return "/";
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f\\]/.test(value)) return "/";
+  let local: string;
+  try {
+    const base = "http://self.invalid";
+    const url = new URL(value, base);
+    if (url.origin !== base) return "/";
+    local = url.pathname + url.search + url.hash;
+  } catch {
+    return "/";
+  }
+  if (local === "/auth" || local.startsWith("/auth?") || local.startsWith("/setup")) return "/";
+  return local;
 }
 
 export function signInUrl(): string {
