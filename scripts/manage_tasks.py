@@ -20,9 +20,9 @@ from backend.tasks import (
 
 def trigger_update():
     """Trigger vulnerability update task."""
-    print("🚀 Triggering vulnerability update...")
+    print("Triggering vulnerability update...")
     task = update_vulnerabilities_task.delay()
-    print(f"✓ Task started with ID: {task.id}")
+    print(f"Task started with ID: {task.id}")
     print(f"  This may take 10-30 minutes.")
     print(f"  Check status with: python scripts/manage_tasks.py status {task.id}")
     return task.id
@@ -30,86 +30,86 @@ def trigger_update():
 
 def trigger_cache_cleanup():
     """Trigger cache cleanup task."""
-    print("🧹 Triggering cache cleanup...")
+    print("Triggering cache cleanup...")
     task = clean_cache_task.delay()
-    print(f"✓ Task started with ID: {task.id}")
+    print(f"Task started with ID: {task.id}")
     return task.id
 
 
 def trigger_stats_update():
     """Trigger statistics update task."""
-    print("📊 Triggering statistics update...")
+    print("Triggering statistics update...")
     task = update_stats_cache_task.delay()
-    print(f"✓ Task started with ID: {task.id}")
+    print(f"Task started with ID: {task.id}")
     return task.id
 
 
 def test_celery():
     """Test Celery connection."""
-    print("🧪 Testing Celery connection...")
+    print("Testing Celery connection...")
     task = test_task.delay("Hello from CLI!")
-    print(f"✓ Test task started with ID: {task.id}")
+    print(f"Test task started with ID: {task.id}")
     
     # Wait for result
     print("  Waiting for result...")
     try:
         result = task.get(timeout=10)
-        print(f"✓ Test successful!")
+        print(f"Test successful!")
         print(f"  Result: {result}")
         return True
     except Exception as e:
-        print(f"✗ Test failed: {e}")
+        print(f"Test failed: {e}")
         return False
 
 
 def check_status(task_id):
     """Check status of a task."""
-    print(f"📋 Checking status of task: {task_id}")
+    print(f"Checking status of task: {task_id}")
     task_result = celery_app.AsyncResult(task_id)
     
     print(f"  Status: {task_result.status}")
     
     if task_result.successful():
-        print(f"  ✓ Task completed successfully!")
+        print(f"  Task completed successfully!")
         print(f"  Result: {task_result.result}")
     elif task_result.failed():
-        print(f"  ✗ Task failed!")
+        print(f"  Task failed!")
         print(f"  Error: {task_result.info}")
     elif task_result.status == "PENDING":
-        print(f"  ⏳ Task is pending...")
+        print(f"  Task is pending...")
     elif task_result.status == "STARTED":
-        print(f"  ⚙️  Task is running...")
+        print(f"  Task is running...")
     
     return task_result.status
 
 
 def list_workers():
     """List active Celery workers."""
-    print("👷 Checking Celery workers...")
+    print("Checking Celery workers...")
     
     try:
         inspect = celery_app.control.inspect()
         active_workers = inspect.active()
         
         if not active_workers:
-            print("  ✗ No workers are running!")
+            print("  No workers are running!")
             print("  Start a worker with: celery -A backend.celery_app worker --loglevel=info --pool=solo")
             return False
         
-        print(f"  ✓ Found {len(active_workers)} worker(s):")
+        print(f"  Found {len(active_workers)} worker(s):")
         for worker_name, tasks in active_workers.items():
             print(f"    - {worker_name}: {len(tasks)} active task(s)")
         
         return True
         
     except Exception as e:
-        print(f"  ✗ Failed to connect to workers: {e}")
+        print(f"  Failed to connect to workers: {e}")
         return False
 
 
 def list_scheduled():
     """List scheduled tasks."""
-    print("📅 Scheduled tasks:")
+    print("Scheduled tasks:")
     
     schedule = celery_app.conf.beat_schedule
     
@@ -121,7 +121,7 @@ def list_scheduled():
 
 def monitor_task(task_id):
     """Monitor a task until completion."""
-    print(f"👀 Monitoring task: {task_id}")
+    print(f"Monitoring task: {task_id}")
     print("  Press Ctrl+C to stop monitoring (task will continue running)")
     
     task_result = celery_app.AsyncResult(task_id)
@@ -134,10 +134,10 @@ def monitor_task(task_id):
         
         print("\n")
         if task_result.successful():
-            print("  ✓ Task completed successfully!")
+            print("  Task completed successfully!")
             print(f"  Result: {task_result.result}")
         else:
-            print("  ✗ Task failed!")
+            print("  Task failed!")
             print(f"  Error: {task_result.info}")
             
     except KeyboardInterrupt:

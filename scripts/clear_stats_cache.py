@@ -20,14 +20,14 @@ def clear_stats_cache():
         result = redis_client.delete("dashboard:stats")
         
         if result:
-            print("✓ Stats cache cleared successfully")
+            print("Stats cache cleared successfully")
         else:
             print("ℹ Stats cache was already empty")
             
         return True
         
     except Exception as e:
-        print(f"✗ Error clearing stats cache: {e}")
+        print(f"Error clearing stats cache: {e}")
         return False
 
 if __name__ == "__main__":

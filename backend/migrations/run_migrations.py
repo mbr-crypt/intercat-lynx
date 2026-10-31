@@ -135,12 +135,12 @@ def _run_sql_migrations():
                 ) as conn:
                     conn.execute(text(statement))
 
-            logger.info(f"✓ Migration {migration_file.name} completed successfully")
+            logger.info(f"Migration {migration_file.name} completed successfully")
 
         except Exception as e:
             # Each file gets its own connection/transaction, so one failure
             # can no longer poison the following files (upstream issue #44).
-            logger.error(f"✗ Migration {migration_file.name} failed: {e}")
+            logger.error(f"Migration {migration_file.name} failed: {e}")
             # Don't raise - continue with other migrations
 
     logger.info("All migrations completed")

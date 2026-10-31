@@ -188,26 +188,26 @@ async def root():
 @app.on_event("startup")
 async def startup_event():
     """Startup event handler."""
-    logger.info("🚀 InterCat Lynx API starting...")
+    logger.info("InterCat Lynx API starting...")
 
     # Bring the schema up to date (fresh installs need no manual command)
     try:
         from .migrations.run_migrations import run_alembic_upgrade
 
-        logger.info("🔄 Upgrading database schema (alembic)...")
+        logger.info("Upgrading database schema (alembic)...")
         run_alembic_upgrade()
     except Exception as e:
-        logger.error(f"❌ Schema upgrade failed: {e}")
+        logger.error(f"Schema upgrade failed: {e}")
 
     # Run database migrations
     try:
         from .migrations.run_migrations import run_migrations
 
-        logger.info("🔄 Running database migrations...")
+        logger.info("Running database migrations...")
         run_migrations()
-        logger.info("✅ Database migrations completed")
+        logger.info("Database migrations completed")
     except Exception as e:
-        logger.warning(f"⚠️  Migration warning: {e}")
+        logger.warning(f"Migration warning: {e}")
         # Don't fail startup if migrations have issues
 
     # never log the password part of the connection string
@@ -219,16 +219,16 @@ async def startup_event():
         )
     except Exception:
         db_display = "Not configured"
-    logger.info(f"📊 Database: {db_display}")
+    logger.info(f"Database: {db_display}")
 
     # Setup assistant: print the setup token while the installation is open
     from .api.setup import announce_setup_token
 
     announce_setup_token()
-    logger.info(f"🌐 CORS Origins: {allowed_origins}")
-    logger.info(f"📝 Log Level: {os.getenv('LOG_LEVEL', 'INFO')}")
-    logger.info(f"🛡️  CSRF Protection: Enabled")
-    logger.info(f"🚦 Rate Limiting: Redis-based (distributed)")
+    logger.info(f"CORS Origins: {allowed_origins}")
+    logger.info(f"Log Level: {os.getenv('LOG_LEVEL', 'INFO')}")
+    logger.info(f"CSRF Protection: Enabled")
+    logger.info(f"Rate Limiting: Redis-based (distributed)")
     logger.info(f"   - Per minute: {os.getenv('RATE_LIMIT_PER_MINUTE', '60')}")
     logger.info(f"   - Per hour: {os.getenv('RATE_LIMIT_PER_HOUR', '1000')}")
 
@@ -236,7 +236,7 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """Shutdown event handler."""
-    logger.info("👋 InterCat Lynx API shutting down...")
+    logger.info("InterCat Lynx API shutting down...")
 
 
 if __name__ == "__main__":

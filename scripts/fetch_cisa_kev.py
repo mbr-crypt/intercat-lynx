@@ -22,17 +22,17 @@ def fetch_cisa_kev():
         result = kev_service.update_exploited_vulnerabilities(db)
         
         if result["status"] == "success":
-            print(f"\n✓ CISA KEV import completed:")
+            print(f"\nCISA KEV import completed:")
             print(f"  - Total KEV entries: {result['total_kev_entries']}")
             print(f"  - Updated in DB: {result['updated']}")
             print(f"  - Not found in DB: {result['not_found']}")
             return True
         else:
-            print(f"\n✗ CISA KEV import failed: {result.get('message')}")
+            print(f"\nCISA KEV import failed: {result.get('message')}")
             return False
             
     except Exception as e:
-        print(f"✗ Error: {e}")
+        print(f"Error: {e}")
         return False
     finally:
         db.close()

@@ -1,4 +1,4 @@
-# 🚀 Quick Start
+# Quick Start
 
 This guide installs InterCat Lynx with Docker on a Linux machine and walks you through the first start. It takes about 15 minutes, most of it waiting for the first build.
 

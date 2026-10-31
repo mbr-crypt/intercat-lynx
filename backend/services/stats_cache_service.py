@@ -31,7 +31,7 @@ def refresh_stats_cache(db: Session) -> bool:
         logger.info("Refreshing vulnerability stats cache...")
         db.execute(text("SELECT refresh_vulnerability_stats_cache()"))
         db.commit()
-        logger.info("✓ Stats cache refreshed successfully")
+        logger.info("Stats cache refreshed successfully")
         return True
     except Exception as e:
         logger.error(f"Failed to refresh stats cache: {e}")
