@@ -19,6 +19,7 @@ otherwise a user could make the server probe the internal network (SSRF).
 
 import hashlib
 import hmac
+import http.client
 import ipaddress
 import json
 import logging
@@ -29,7 +30,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Iterable, List, Optional, Sequence, Tuple
 from urllib.parse import urlparse
 
-import requests
 from sqlalchemy import and_, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -42,6 +42,7 @@ from ..models import (
     Vulnerability,
     WatchedProduct,
 )
+from ..security import pinned_post
 from ..security.crypto import decrypt_secret, encrypt_secret
 from . import watchlist_service as wl
 from .email_service import email_service
@@ -109,8 +110,14 @@ def _blocked(address: str, allow_private: bool) -> Optional[str]:
     return None
 
 
-def validate_webhook_url(url: str) -> None:
-    """Raise ValueError (with a message for the user) if the URL may not be used."""
+def resolve_webhook_target(url: str) -> str:
+    """
+    Check the URL and return the IP address to connect to.
+
+    Raises ValueError (with a message for the user) if the URL may not be used.
+    The caller connects to the *returned* address and not to the name again, so
+    the answer that was checked is the one that is used (see ``pinned_post``).
+    """
     parsed = urlparse(url.strip())
     if parsed.scheme not in ("http", "https"):
         raise ValueError("Die Adresse muss mit http:// oder https:// beginnen.")
@@ -122,6 +129,8 @@ def validate_webhook_url(url: str) -> None:
         addresses = resolve_host(parsed.hostname)
     except (socket.gaierror, UnicodeError):
         raise ValueError("Der Rechnername konnte nicht aufgelöst werden.")
+    if not addresses:
+        raise ValueError("Der Rechnername konnte nicht aufgelöst werden.")
     allow = private_networks_allowed()
     for address in addresses:
         reason = _blocked(address, allow)
@@ -132,6 +141,12 @@ def validate_webhook_url(url: str) -> None:
             )
         if reason:
             raise ValueError("Diese Adresse ist als Ziel nicht erlaubt.")
+    return addresses[0]
+
+
+def validate_webhook_url(url: str) -> None:
+    """Raise ValueError (with a message for the user) if the URL may not be used."""
+    resolve_webhook_target(url)
 
 
 def sign(secret: str, timestamp: str, body: bytes) -> str:
@@ -211,7 +226,7 @@ def send_webhook(setting: NotificationSetting, user: User, items: List[dict], te
     if not setting.webhook_url or not setting.webhook_secret_encrypted:
         return False, "Webhook ist nicht eingerichtet"
     try:
-        validate_webhook_url(setting.webhook_url)
+        ip = resolve_webhook_target(setting.webhook_url)
         secret = decrypt_secret(setting.webhook_secret_encrypted)
     except ValueError as e:
         return False, str(e)
@@ -234,19 +249,16 @@ def send_webhook(setting: NotificationSetting, user: User, items: List[dict], te
         "X-Lynx-Signature": "sha256=" + sign(secret, timestamp, body),
     }
     try:
-        # No redirects: a redirect could lead to an address we never checked
-        response = requests.post(
-            setting.webhook_url,
-            data=body,
-            headers=headers,
-            timeout=WEBHOOK_TIMEOUT,
-            allow_redirects=False,
+        # Connects to the address that was just checked, has one total deadline,
+        # never reads the response body and does not follow redirects.
+        status = pinned_post.post(
+            setting.webhook_url, ip, body, headers, total_timeout=WEBHOOK_TIMEOUT
         )
-    except requests.RequestException as e:
+    except (OSError, http.client.HTTPException) as e:
         return False, f"Senden fehlgeschlagen: {type(e).__name__}"
-    if 200 <= response.status_code < 300:
+    if 200 <= status < 300:
         return True, None
-    return False, f"Der Empfänger antwortete mit HTTP {response.status_code}"
+    return False, f"Der Empfänger antwortete mit HTTP {status}"
 
 
 def _email_text(user: User, items: List[dict]) -> Tuple[str, str, str]:

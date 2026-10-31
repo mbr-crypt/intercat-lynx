@@ -4,6 +4,8 @@ Task management and monitoring endpoints.
 
 from typing import Any, Dict, Optional
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
@@ -11,6 +13,8 @@ from ..celery_app import celery_app
 from ..dependencies.auth import require_role
 from ..models import UserRole
 from ..tasks import get_llm_stats, process_llm_queue, process_new_cves
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -79,17 +83,19 @@ async def trigger_llm_batch(batch_size: int = 10, priority: str = "high"):
 
 
 @router.get("/tasks/llm-stats", dependencies=[Depends(require_role(UserRole.ANALYST))])
-async def get_llm_processing_stats():
+def get_llm_processing_stats():
     """
     Get LLM processing statistics.
 
     Shows progress of CVE processing with LLM.
     """
     try:
-        result = get_llm_stats()
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # Called directly (not queued): three COUNT queries are cheap, and queueing
+        # them behind the single Celery worker made this request wait for it.
+        return get_llm_stats()
+    except Exception:
+        logger.exception("LLM stats failed")
+        raise HTTPException(status_code=500, detail="Could not read the LLM statistics")
 
 
 @router.get(
@@ -145,7 +151,7 @@ async def list_scheduled_tasks():
 
 
 @router.get("/tasks/workers/status", dependencies=[Depends(require_role(UserRole.ANALYST))])
-async def get_workers_status():
+def get_workers_status():
     """
     Get status of Celery workers.
 
@@ -153,7 +159,10 @@ async def get_workers_status():
     """
     try:
         # Inspect active workers
-        inspect = celery_app.control.inspect()
+        # Each inspect call waits for the workers' reply up to ``timeout`` seconds,
+        # so the three calls below take at most about 3 s. This is a plain ``def``
+        # handler (worker thread): waiting here must not block the event loop.
+        inspect = celery_app.control.inspect(timeout=1.0)
 
         active_workers = inspect.active()
         registered_tasks = inspect.registered()
@@ -178,10 +187,9 @@ async def get_workers_status():
 
         return {"status": "healthy", "workers": workers, "total_workers": len(workers)}
 
-    except Exception as e:
-        raise HTTPException(
-            status_code=503, detail=f"Failed to connect to Celery workers: {str(e)}"
-        )
+    except Exception:
+        logger.exception("Celery worker inspection failed")
+        raise HTTPException(status_code=503, detail="Could not reach the Celery workers")
 
 
 def _get_task_description(task_name: str) -> str:

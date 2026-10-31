@@ -398,7 +398,7 @@ def test_email_escapes_html_in_titles(db_session, smtp):
 # --- the run: webhook --------------------------------------------------------------
 
 
-class FakeResponse:
+class FakeResponse:  # kept for readability of older tests
     def __init__(self, status):
         self.status_code = status
 
@@ -408,14 +408,14 @@ def hook(monkeypatch, db_session):
     calls = []
     state = {"status": 200, "error": None}
 
-    def fake_post(url, data=None, headers=None, timeout=None, allow_redirects=None):
+    def fake_post(url, ip, body, headers, total_timeout=None):
         if state["error"]:
             raise state["error"]
-        calls.append({"url": url, "body": data, "headers": headers,
-                      "timeout": timeout, "allow_redirects": allow_redirects})
-        return FakeResponse(state["status"])
+        calls.append({"url": url, "ip": ip, "body": body, "headers": headers,
+                      "timeout": total_timeout})
+        return state["status"]
 
-    monkeypatch.setattr(alerts.requests, "post", fake_post)
+    monkeypatch.setattr(alerts.pinned_post, "post", fake_post)
     return calls, state
 
 
@@ -430,6 +430,15 @@ def webhook_user(db, name="alice", **fields):
     return user, setting
 
 
+def test_webhook_connects_to_the_address_that_was_checked(db_session, hook):
+    calls, _ = hook
+    webhook_user(db_session)
+    add_cve(db_session, "CVE-2026-4002")
+    alerts.run(db_session)
+    # resolve_host is stubbed to 93.184.216.34: that exact address is used
+    assert calls[0]["ip"] == "93.184.216.34"
+
+
 def test_webhook_is_signed_and_does_not_follow_redirects(db_session, hook):
     calls, _ = hook
     webhook_user(db_session)
@@ -437,7 +446,7 @@ def test_webhook_is_signed_and_does_not_follow_redirects(db_session, hook):
     assert alerts.run(db_session)["webhook"] == 1
     call = calls[0]
     assert call["url"] == "https://hook.example.org/in"
-    assert call["allow_redirects"] is False and call["timeout"] <= 15
+    assert call["timeout"] <= 15
     hdr = call["headers"]
     assert hdr["X-Lynx-Event"] == "cve.new"
     expected = alerts.sign("whsec_test", hdr["X-Lynx-Timestamp"], call["body"])
@@ -476,15 +485,13 @@ def test_webhook_error_status_keeps_the_alert_for_retry(db_session, hook):
 
 
 def test_webhook_network_error_does_not_leak_details(db_session, hook):
-    import requests
-
     _, state = hook
     _, setting = webhook_user(db_session)
     add_cve(db_session, "CVE-2026-4201")
-    state["error"] = requests.ConnectionError("secret internal detail 10.0.0.5")
+    state["error"] = ConnectionResetError("secret internal detail 10.0.0.5")
     alerts.run(db_session)
     db_session.refresh(setting)
-    assert setting.last_webhook_error == "Senden fehlgeschlagen: ConnectionError"
+    assert setting.last_webhook_error == "Senden fehlgeschlagen: ConnectionResetError"
 
 
 def test_webhook_address_is_checked_again_at_send_time(db_session, hook, monkeypatch):

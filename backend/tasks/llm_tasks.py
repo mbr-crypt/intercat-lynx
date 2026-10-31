@@ -276,7 +276,8 @@ def get_llm_stats() -> dict:
         }
 
     except Exception as e:
+        # The driver text names the database host/user: log it, do not return it
         logger.error(f"Error getting LLM stats: {e}")
-        return {"status": "error", "message": str(e)}
+        return {"status": "error", "message": "Could not read the LLM statistics"}
     finally:
         db.close()

@@ -158,34 +158,55 @@ def _count_live(db: Session) -> dict:
     }
 
 
+TOP_VENDORS_CACHE_KEY = "dashboard:top-vendors"
+TOP_VENDORS_MAX = 100
+
+
+def _count_vendors(db: Session) -> list:
+    """Vendor counts over the whole table, highest first (at most TOP_VENDORS_MAX)."""
+    vendor_counts: dict = {}
+    # yield_per streams the rows in batches instead of loading the table at once
+    rows = (
+        db.query(Vulnerability.vendors)
+        .filter(Vulnerability.vendors.isnot(None))
+        .yield_per(1000)
+    )
+    for (vendors,) in rows:
+        for vendor in vendors or []:
+            vendor_counts[vendor] = vendor_counts.get(vendor, 0) + 1
+    top = sorted(vendor_counts.items(), key=lambda x: x[1], reverse=True)[:TOP_VENDORS_MAX]
+    return [{"name": vendor, "count": count} for vendor, count in top]
+
+
+# A plain ``def`` (not ``async def``): FastAPI runs it in a worker thread. The
+# counting loop below is synchronous work that grows with the table; on the
+# event loop it would stall every other request of the uvicorn worker.
 @router.get("/stats/top-vendors")
-async def get_top_vendors(limit: int = 20, db: Session = Depends(get_db)):
+def get_top_vendors(
+    limit: int = Query(20, ge=1, le=TOP_VENDORS_MAX), db: Session = Depends(get_db)
+):
     """
-    Get top vendors by vulnerability count.
+    Get top vendors by vulnerability count (cached for 5 minutes).
 
     **Query Parameters:**
-    - `limit`: Number of vendors to return (default: 20)
+    - `limit`: Number of vendors to return (default: 20, 1-100)
     """
+    vendors = None
+    try:
+        cached = redis_client.get(TOP_VENDORS_CACHE_KEY)
+        if cached:
+            vendors = json.loads(cached)
+    except Exception as e:
+        logger.warning("Top-vendors cache read failed: %s", e)
 
-    # This is a complex query - get all vendors and count
-    vulnerabilities = (
-        db.query(Vulnerability.vendors).filter(Vulnerability.vendors.isnot(None)).all()
-    )
+    if vendors is None:
+        vendors = _count_vendors(db)
+        try:
+            redis_client.setex(TOP_VENDORS_CACHE_KEY, STATS_CACHE_TTL, json.dumps(vendors))
+        except Exception as e:
+            logger.warning("Top-vendors cache write failed: %s", e)
 
-    vendor_counts = {}
-    for (vendors,) in vulnerabilities:
-        if vendors:
-            for vendor in vendors:
-                vendor_counts[vendor] = vendor_counts.get(vendor, 0) + 1
-
-    # Sort and limit
-    top_vendors = sorted(vendor_counts.items(), key=lambda x: x[1], reverse=True)[
-        :limit
-    ]
-
-    return {
-        "vendors": [{"name": vendor, "count": count} for vendor, count in top_vendors]
-    }
+    return {"vendors": vendors[:limit]}
 
 
 @router.get("/stats/severity-distribution")
