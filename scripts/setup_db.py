@@ -22,10 +22,10 @@ def run_command(cmd: list[str], cwd: Path = PROJECT_ROOT):
     result = subprocess.run(cmd, cwd=cwd, capture_output=False, text=True)
     
     if result.returncode != 0:
-        print(f"\n❌ Command failed with exit code {result.returncode}")
+        print(f"\nCommand failed with exit code {result.returncode}")
         sys.exit(result.returncode)
     
-    print(f"\n✅ Command completed successfully\n")
+    print(f"\nCommand completed successfully\n")
 
 
 def main():
@@ -43,9 +43,9 @@ def main():
             capture_output=True,
             check=True
         )
-        print("✅ Docker is running")
+        print("Docker is running")
     except Exception as e:
-        print("❌ Docker is not running. Please start Docker first.")
+        print("Docker is not running. Please start Docker first.")
         print("   Run: docker-compose up -d")
         sys.exit(1)
     
@@ -67,7 +67,7 @@ def main():
             "-m", "Initial schema"
         ])
     except Exception as e:
-        print("⚠️  Migration might already exist, continuing...")
+        print("Migration might already exist, continuing...")
     
     # Apply migrations
     print("\nStep 5: Applying migrations...")
@@ -91,12 +91,12 @@ def main():
                 "initial_load"
             ])
         else:
-            print(f"⚠️  File not found: {dedup_file}")
+            print(f"File not found: {dedup_file}")
             print("   Run the connectors first: python Data_Sample_Connectors/run_all.py")
     
     print("""
 ╔══════════════════════════════════════════════════════════╗
-║         ✅ Database Setup Complete!                      ║
+║           Database Setup Complete!                       ║
 ╚══════════════════════════════════════════════════════════╝
 
 Next steps:

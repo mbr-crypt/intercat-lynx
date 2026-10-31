@@ -77,12 +77,12 @@ class EmailService:
         if self.environment == "development" or not self.smtp_enabled:
             # Development mode: Log to console
             logger.info("=" * 60)
-            logger.info(f"📧 EMAIL")
+            logger.info(f"EMAIL")
             logger.info(f"To: {to_email}")
             logger.info(f"Subject: {subject}")
             logger.info(f"Text Content:\n{text_content}")
             logger.info("=" * 60)
-            print(f"\n📧 EMAIL to {to_email}: {subject}\n{text_content}\n")
+            print(f"\nEMAIL to {to_email}: {subject}\n{text_content}\n")
             return True
         else:
             # Production mode: Send actual email
@@ -110,14 +110,14 @@ class EmailService:
         if self.environment == "development" or not self.smtp_enabled:
             # Development mode: Log to console
             logger.info("=" * 60)
-            logger.info(f"📧 EMAIL VERIFICATION CODE")
+            logger.info(f"EMAIL VERIFICATION CODE")
             logger.info(f"To: {email}")
             logger.info(f"Subject: {subject}")
             logger.info(f"Code: {code}")
             logger.info(f"Type: {verification_type}")
             logger.info(f"Message:\n{message}")
             logger.info("=" * 60)
-            print(f"\n🔐 VERIFICATION CODE for {email}: {code}\n")
+            print(f"\nVERIFICATION CODE for {email}: {code}\n")
             return True
         else:
             # Production mode: Send actual email

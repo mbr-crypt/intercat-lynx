@@ -118,11 +118,11 @@ def apply_migration():
 
             # Commit transaction
             trans.commit()
-            print("\n✅ Migration applied successfully!")
+            print("\nMigration applied successfully!")
 
         except Exception as e:
             trans.rollback()
-            print(f"\n❌ Error applying migration: {e}")
+            print(f"\nError applying migration: {e}")
             raise
 
 if __name__ == "__main__":

@@ -21,10 +21,10 @@ def refresh_stats_cache():
         print("Refreshing vulnerability stats cache...")
         db.execute("SELECT refresh_vulnerability_stats_cache()")
         db.commit()
-        print("✓ Stats cache refreshed successfully")
+        print("Stats cache refreshed successfully")
         return True
     except Exception as e:
-        print(f"✗ Error refreshing stats cache: {e}")
+        print(f"Error refreshing stats cache: {e}")
         db.rollback()
         return False
     finally:

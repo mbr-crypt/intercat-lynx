@@ -32,7 +32,7 @@ def process_vulnerabilities(
     llm = get_llm_service(enabled=True)
     
     if not llm.enabled:
-        print("❌ LLM service is not available. Please install and start Ollama.")
+        print("LLM service is not available. Please install and start Ollama.")
         print("   Install: https://ollama.ai/download")
         print("   Run: ollama pull llama3.2:3b")
         return
@@ -51,10 +51,10 @@ def process_vulnerabilities(
     vulnerabilities = query.all()
     
     if not vulnerabilities:
-        print("✅ No vulnerabilities to process")
+        print("No vulnerabilities to process")
         return
     
-    print(f"🤖 Processing {len(vulnerabilities)} CVEs with LLM...")
+    print(f"Processing {len(vulnerabilities)} CVEs with LLM...")
     print(f"   Model: {llm.model}")
     print()
     
@@ -85,7 +85,7 @@ def process_vulnerabilities(
             
             session.commit()
             
-            print("✅")
+            print("done")
             print(f"  Title: {summary['simple_title']}")
             print(f"  Desc:  {summary['simple_description'][:80]}...")
             print()
@@ -93,14 +93,14 @@ def process_vulnerabilities(
             processed += 1
             
         except Exception as e:
-            print(f"❌ Error: {e}")
+            print(f"Error: {e}")
             errors += 1
             session.rollback()
     
     print()
-    print(f"✅ Processed: {processed}")
+    print(f"Processed: {processed}")
     if errors:
-        print(f"❌ Errors: {errors}")
+        print(f"Errors: {errors}")
 
 
 def main():

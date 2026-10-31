@@ -4,7 +4,7 @@
 
 set -e
 
-echo "🔒 Running security checks..."
+echo "Running security checks..."
 
 # Colors for output
 RED='\033[0;31m'
@@ -19,7 +19,7 @@ SECRETS_FOUND=0
 STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM)
 
 if [ -z "$STAGED_FILES" ]; then
-    echo -e "${GREEN}✓${NC} No files to check"
+    echo -e "${GREEN}OK${NC} No files to check"
     exit 0
 fi
 
@@ -72,7 +72,7 @@ for file in $STAGED_FILES; do
                 continue  # Skip comments and example files
             fi
             
-            echo -e "${RED}✗${NC} Potential secret found in: $file"
+            echo -e "${RED}ERROR${NC} Potential secret found in: $file"
             echo -e "${YELLOW}  Pattern: $pattern${NC}"
             SECRETS_FOUND=1
         fi
@@ -81,7 +81,7 @@ done
 
 # Check for .env files (should never be committed)
 if echo "$STAGED_FILES" | grep -q "^\.env$"; then
-    echo -e "${RED}✗${NC} .env file should not be committed!"
+    echo -e "${RED}ERROR${NC} .env file should not be committed!"
     echo -e "${YELLOW}  Use .env.example instead${NC}"
     SECRETS_FOUND=1
 fi
@@ -90,7 +90,7 @@ fi
 CREDENTIAL_FILES=(".env" "credentials.json" "secrets.yaml" "secrets.yml" "id_rsa" "id_dsa" ".ssh/")
 for cred_file in "${CREDENTIAL_FILES[@]}"; do
     if echo "$STAGED_FILES" | grep -q "$cred_file"; then
-        echo -e "${RED}✗${NC} Credential file detected: $cred_file"
+        echo -e "${RED}ERROR${NC} Credential file detected: $cred_file"
         SECRETS_FOUND=1
     fi
 done
@@ -99,7 +99,7 @@ done
 if [ $SECRETS_FOUND -eq 1 ]; then
     echo ""
     echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${RED}❌ COMMIT BLOCKED: Potential secrets detected!${NC}"
+    echo -e "${RED}COMMIT BLOCKED: Potential secrets detected!${NC}"
     echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
     echo "Please remove sensitive data before committing."
@@ -109,7 +109,7 @@ if [ $SECRETS_FOUND -eq 1 ]; then
     echo ""
     exit 1
 else
-    echo -e "${GREEN}✓${NC} No secrets detected"
-    echo -e "${GREEN}✓${NC} Security check passed"
+    echo -e "${GREEN}OK${NC} No secrets detected"
+    echo -e "${GREEN}OK${NC} Security check passed"
     exit 0
 fi

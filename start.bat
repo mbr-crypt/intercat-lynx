@@ -13,7 +13,7 @@ if %errorlevel% neq 0 (
     pause
     exit /b 1
 )
-echo ✓ Docker is running
+echo Docker is running
 echo.
 
 REM Start Docker containers
@@ -24,13 +24,13 @@ if %errorlevel% neq 0 (
     pause
     exit /b 1
 )
-echo ✓ Docker containers started
+echo Docker containers started
 echo.
 
 REM Wait for database
 echo [3/5] Waiting for database to be ready...
 timeout /t 5 /nobreak >nul
-echo ✓ Database ready
+echo Database ready
 echo.
 
 REM Run database migrations
@@ -40,7 +40,7 @@ if %errorlevel% neq 0 (
     echo WARNING: Database migrations may have failed
     echo Run '.\setup_database.bat' manually if needed
 ) else (
-    echo ✓ Database tables created
+    echo Database tables created
 )
 echo.
 
@@ -60,7 +60,7 @@ timeout /t 2 /nobreak >nul
 start "OpenThreat Frontend" cmd /k "cd frontend && npm run dev"
 
 echo.
-echo ✓ Application started!
+echo Application started!
 echo.
 echo Backend:  http://localhost:8001/docs
 echo Frontend: http://localhost:3000
